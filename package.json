@@ -12,6 +12,8 @@
     "validate:2b": "node scripts/validate-milestone-2b.mjs",
     "validate:3": "node scripts/validate-milestone-3.mjs",
     "validate:e2e": "node scripts/validate-e2e-milestone-4.mjs",
+    "validate:rls": "node scripts/validate-rls-milestone-5.mjs",
+    "testdata:report": "node scripts/testdata-report.mjs",
     "migrate:pilot": "node scripts/migrate-pilot.mjs",
     "preview": "vite preview"
   },
