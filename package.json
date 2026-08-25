@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "validate:supabase": "node scripts/validate-milestone-1-1.mjs",
     "validate:2a": "node scripts/validate-milestone-2a.mjs",
+    "validate:2b": "node scripts/validate-milestone-2b.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
