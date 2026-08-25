@@ -753,6 +753,36 @@ textarea:focus {
   white-space: pre-wrap;
 }
 
+.table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  min-width: 840px;
+  width: 100%;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  background: #f8fbfb;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.ddd-consumption-row {
+  background: #ffffff;
+}
+
 .full-span {
   grid-column: 1 / -1;
 }
