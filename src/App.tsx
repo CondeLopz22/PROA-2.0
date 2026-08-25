@@ -4,6 +4,7 @@ import { AuthProvider } from './features/auth/AuthProvider'
 import { useAuth } from './features/auth/authContext'
 import { LoginPage } from './features/auth/LoginPage'
 import { IpsProvider } from './features/ips/IpsProvider'
+import { AntimicrobialUsePage } from './pages/AntimicrobialUsePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { PatientsPage } from './pages/PatientsPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
@@ -29,7 +30,7 @@ function ProtectedApp() {
           <Route path="/rondas" element={<RoundsPage />} />
           <Route path="/rondas/:roundId" element={<RoundEditorPage />} />
           <Route path="/pacientes" element={<PatientsPage />} />
-          <Route path="/ddd" element={<PlaceholderPage title="Consumo / DDD" />} />
+          <Route path="/ddd" element={<AntimicrobialUsePage />} />
           <Route path="/indicadores" element={<PlaceholderPage title="Indicadores" />} />
           <Route path="/administracion" element={<PlaceholderPage title="Administración" />} />
           <Route path="*" element={<Navigate to="/" replace />} />

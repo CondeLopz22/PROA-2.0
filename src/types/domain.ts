@@ -112,6 +112,48 @@ export type CatalogItem = {
 export type AntimicrobialCatalogItem = CatalogItem & {
   principio_activo?: string | null
   nombre_generico?: string | null
+  codigo_atc?: string | null
+}
+
+export type OmsDdd = {
+  id: UUID
+  antimicrobiano_id: UUID
+  via: string
+  ddd_oms: number | string
+  unidad_ddd?: string | null
+  version_fuente?: string | null
+  fecha_actualizacion?: string | null
+}
+
+export type DddRecord = {
+  id: UUID
+  ips_id: UUID
+  servicio_id: UUID
+  periodo: string
+  camas_disponibles?: number | string | null
+  camas_dia_ocupadas?: number | string | null
+  porcentaje_ocupacion?: number | string | null
+  usuario_registro?: UUID | null
+  estado?: 'Borrador' | 'Confirmado' | 'Anulado' | string | null
+  fecha_registro?: string | null
+  fecha_confirmacion?: string | null
+}
+
+export type DddConsumption = {
+  id: UUID
+  registro_id: UUID
+  antimicrobiano_id: UUID
+  via: string
+  presentacion?: string | null
+  concentracion?: number | string | null
+  unidad_concentracion?: string | null
+  cantidad_consumida?: number | string | null
+  unidad_consumo?: string | null
+  gramos_consumidos?: number | string | null
+  ddd_oms?: number | string | null
+  ddd_calculadas?: number | string | null
+  ddd_100_camas_dia?: number | string | null
+  fecha_creacion?: string | null
 }
 
 export type MicroorganismCatalogItem = CatalogItem & {
