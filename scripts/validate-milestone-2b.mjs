@@ -88,14 +88,14 @@ async function insertTreatment({ ips, patient, caseRow, round, antimicrobial }) 
   return result.data
 }
 
-async function replaceMicrobiology({ ips, patient, caseRow, round, sample, organism, antimicrobial, positive }) {
+async function replaceMicrobiology({ ips, round, sample, organism, antimicrobial, positive }) {
   const existing = await supabase.from('microbiologia').select('id').eq('ronda_id', round.id)
   if (existing.error) fail('Microbiología existente', existing.error)
   const ids = (existing.data ?? []).map((row) => row.id)
   if (ids.length) {
-    const resistanceDelete = await supabase.from('resistencia_microbiologica').delete().in('microbiologia_id', ids)
+    const resistanceDelete = await supabase.from('resistencia_microbiologica').delete().in('muestra_id', ids)
     if (resistanceDelete.error) fail('Eliminar resistencias', resistanceDelete.error)
-    const sensitivityDelete = await supabase.from('sensibilidad_microbiologica').delete().in('microbiologia_id', ids)
+    const sensitivityDelete = await supabase.from('sensibilidad_microbiologica').delete().in('muestra_id', ids)
     if (sensitivityDelete.error) fail('Eliminar sensibilidades', sensitivityDelete.error)
     const microDelete = await supabase.from('microbiologia').delete().eq('ronda_id', round.id)
     if (microDelete.error) fail('Eliminar microbiología', microDelete.error)
@@ -110,8 +110,6 @@ async function replaceMicrobiology({ ips, patient, caseRow, round, sample, organ
     .from('microbiologia')
     .insert({
       ips_id: ips.id,
-      paciente_id: patient.id,
-      caso_id: caseRow.id,
       ronda_id: round.id,
       tipo_muestra_id: sample.id,
       tipo_muestra: sampleName,
@@ -132,7 +130,7 @@ async function replaceMicrobiology({ ips, patient, caseRow, round, sample, organ
   if (positive) {
     const resistance = await supabase
       .from('resistencia_microbiologica')
-      .insert({ microbiologia_id: micro.data.id, mecanismo: 'BLEE' })
+      .insert({ muestra_id: micro.data.id, mecanismo: 'BLEE' })
       .select('*')
       .single()
     if (resistance.error) fail('Resistencia microbiológica', resistance.error)
@@ -140,7 +138,7 @@ async function replaceMicrobiology({ ips, patient, caseRow, round, sample, organ
     const sensitivity = await supabase
       .from('sensibilidad_microbiologica')
       .insert({
-        microbiologia_id: micro.data.id,
+        muestra_id: micro.data.id,
         antimicrobiano_id: antimicrobial.id,
         antimicrobiano: antimicrobialName,
         resultado: 'Sensible',
@@ -153,7 +151,7 @@ async function replaceMicrobiology({ ips, patient, caseRow, round, sample, organ
   return micro.data
 }
 
-async function replaceIntervention({ ips, patient, caseRow, round, interventionCatalog, treatment, hubo, acceptance }) {
+async function replaceIntervention({ ips, round, interventionCatalog, treatment, hubo, acceptance }) {
   const existing = await supabase.from('intervenciones_proa').select('id').eq('ronda_id', round.id)
   if (existing.error) fail('Intervenciones existentes', existing.error)
   const ids = (existing.data ?? []).map((row) => row.id)
@@ -170,8 +168,6 @@ async function replaceIntervention({ ips, patient, caseRow, round, interventionC
     .from('intervenciones_proa')
     .insert({
       ips_id: ips.id,
-      paciente_id: patient.id,
-      caso_id: caseRow.id,
       ronda_id: round.id,
       hubo_intervencion: hubo,
       tipo_intervencion_id: hubo ? interventionCatalog.id : null,
@@ -245,7 +241,7 @@ const antimicrobial = await firstFrom('catalogo_antimicrobianos', 'Catálogo ant
 const interventionCatalog = await firstFrom('catalogo_intervenciones', 'Catálogo intervenciones')
 
 const negative = await insertRound({ ips: gestion, patient, userId, suffix: 'NEG' })
-await replaceMicrobiology({ ips: gestion, patient, caseRow: negative.caseRow, round: negative.round, sample, organism, antimicrobial, positive: false })
+await replaceMicrobiology({ ips: gestion, round: negative.round, sample, organism, antimicrobial, positive: false })
 const negativeChildren = await supabase
   .from('microbiologia')
   .select('id')
@@ -255,11 +251,11 @@ if (negativeChildren.error) fail('Microbiología negativa persistida', negativeC
 const negativeResistanceCount = await supabase
   .from('resistencia_microbiologica')
   .select('id', { count: 'exact', head: true })
-  .eq('microbiologia_id', negativeChildren.data.id)
+  .eq('muestra_id', negativeChildren.data.id)
 const negativeSensitivityCount = await supabase
   .from('sensibilidad_microbiologica')
   .select('id', { count: 'exact', head: true })
-  .eq('microbiologia_id', negativeChildren.data.id)
+  .eq('muestra_id', negativeChildren.data.id)
 if (negativeResistanceCount.error || negativeSensitivityCount.error) {
   fail('Microbiología negativa sin hijos innecesarios', negativeResistanceCount.error ?? negativeSensitivityCount.error)
 }
@@ -270,7 +266,7 @@ ok('A. Microbiología negativa')
 
 const positive = await insertRound({ ips: gestion, patient, userId, suffix: 'POS' })
 const treatment = await insertTreatment({ ips: gestion, patient, caseRow: positive.caseRow, round: positive.round, antimicrobial })
-await replaceMicrobiology({ ips: gestion, patient, caseRow: positive.caseRow, round: positive.round, sample, organism, antimicrobial, positive: true })
+await replaceMicrobiology({ ips: gestion, round: positive.round, sample, organism, antimicrobial, positive: true })
 const positiveReload = await supabase
   .from('microbiologia')
   .select('id,microorganismo')
@@ -280,11 +276,11 @@ if (positiveReload.error) fail('Microbiología positiva persistida', positiveRel
 const positiveResistanceCount = await supabase
   .from('resistencia_microbiologica')
   .select('id', { count: 'exact', head: true })
-  .eq('microbiologia_id', positiveReload.data.id)
+  .eq('muestra_id', positiveReload.data.id)
 const positiveSensitivityCount = await supabase
   .from('sensibilidad_microbiologica')
   .select('id', { count: 'exact', head: true })
-  .eq('microbiologia_id', positiveReload.data.id)
+  .eq('muestra_id', positiveReload.data.id)
 if (positiveResistanceCount.error || positiveSensitivityCount.error) {
   fail('Microbiología positiva completa', positiveResistanceCount.error ?? positiveSensitivityCount.error)
 }
@@ -295,8 +291,6 @@ ok('B. Microbiología positiva')
 
 await replaceIntervention({
   ips: gestion,
-  patient,
-  caseRow: positive.caseRow,
   round: positive.round,
   interventionCatalog,
   treatment,
@@ -321,8 +315,6 @@ const noInterventionTreatment = await insertTreatment({
 })
 await replaceIntervention({
   ips: gestion,
-  patient,
-  caseRow: noIntervention.caseRow,
   round: noIntervention.round,
   interventionCatalog,
   treatment: noInterventionTreatment,
@@ -334,8 +326,6 @@ ok('D. No intervención')
 for (const acceptance of ['Sí', 'No', 'Parcialmente', 'Pendiente']) {
   await replaceIntervention({
     ips: gestion,
-    patient,
-    caseRow: positive.caseRow,
     round: positive.round,
     interventionCatalog,
     treatment,
@@ -391,8 +381,6 @@ const duplicateTreatment = await insertTreatment({
 })
 await replaceMicrobiology({
   ips: gestion,
-  patient,
-  caseRow: duplicateRound.caseRow,
   round: duplicateRound.round,
   sample,
   organism,
@@ -401,8 +389,6 @@ await replaceMicrobiology({
 })
 await replaceIntervention({
   ips: gestion,
-  patient,
-  caseRow: duplicateRound.caseRow,
   round: duplicateRound.round,
   interventionCatalog,
   treatment: duplicateTreatment,
@@ -411,8 +397,6 @@ await replaceIntervention({
 })
 await replaceMicrobiology({
   ips: gestion,
-  patient,
-  caseRow: duplicateRound.caseRow,
   round: duplicateRound.round,
   sample,
   organism,
@@ -421,8 +405,6 @@ await replaceMicrobiology({
 })
 await replaceIntervention({
   ips: gestion,
-  patient,
-  caseRow: duplicateRound.caseRow,
   round: duplicateRound.round,
   interventionCatalog,
   treatment: duplicateTreatment,

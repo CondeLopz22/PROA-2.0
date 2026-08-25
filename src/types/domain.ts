@@ -136,8 +136,6 @@ export type TreatmentHistory = {
 export type Microbiology = {
   id: UUID
   ips_id?: UUID | null
-  paciente_id?: UUID | null
-  caso_id?: UUID | null
   ronda_id?: UUID | null
   tipo_muestra_id?: UUID | null
   tipo_muestra?: string | null
@@ -156,14 +154,14 @@ export type Microbiology = {
 
 export type MicrobiologyResistance = {
   id: UUID
-  microbiologia_id: UUID
+  muestra_id: UUID
   mecanismo?: string | null
   fecha_creacion?: string | null
 }
 
 export type MicrobiologySensitivity = {
   id: UUID
-  microbiologia_id: UUID
+  muestra_id: UUID
   antimicrobiano_id?: UUID | null
   antimicrobiano?: string | null
   resultado?: string | null
@@ -173,8 +171,6 @@ export type MicrobiologySensitivity = {
 export type ProaIntervention = {
   id: UUID
   ips_id?: UUID | null
-  paciente_id?: UUID | null
-  caso_id?: UUID | null
   ronda_id?: UUID | null
   hubo_intervencion?: boolean | null
   tipo_intervencion_id?: UUID | null

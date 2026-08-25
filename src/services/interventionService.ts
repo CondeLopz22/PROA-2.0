@@ -166,15 +166,13 @@ export async function replaceRoundIntervention({
   }
 
   if (!draft.huboIntervencion) return null
-  if (!round.ips_id || !round.paciente_id || !round.caso_id) throw new Error('La ronda no tiene contexto de intervención completo.')
+  if (!round.ips_id || !round.id) throw new Error('La ronda no tiene contexto de intervención completo.')
   const hasIntervention = draft.huboIntervencion === 'Sí'
 
   const { data, error } = await supabase
     .from('intervenciones_proa')
     .insert({
       ips_id: round.ips_id,
-      paciente_id: round.paciente_id,
-      caso_id: round.caso_id,
       ronda_id: round.id,
       hubo_intervencion: hasIntervention,
       tipo_intervencion_id: hasIntervention ? draft.tipoIntervencionId || null : null,

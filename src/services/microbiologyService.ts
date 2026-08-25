@@ -98,8 +98,8 @@ export function microbiologyDraftFromBundle(bundle?: MicrobiologyBundle | null):
 async function getMicrobiologyChildren(ids: UUID[]) {
   if (!ids.length) return { resistances: [], sensitivities: [] }
   const [resistanceResult, sensitivityResult] = await Promise.all([
-    supabase.from('resistencia_microbiologica').select('*').in('microbiologia_id', ids),
-    supabase.from('sensibilidad_microbiologica').select('*').in('microbiologia_id', ids),
+    supabase.from('resistencia_microbiologica').select('*').in('muestra_id', ids),
+    supabase.from('sensibilidad_microbiologica').select('*').in('muestra_id', ids),
   ])
   if (resistanceResult.error) throw resistanceResult.error
   if (sensitivityResult.error) throw sensitivityResult.error
@@ -121,23 +121,32 @@ export async function getRoundMicrobiology(roundId: UUID) {
   const children = await getMicrobiologyChildren(rows.map((row) => row.id))
   return rows.map((row) => ({
     microbiology: row,
-    resistances: children.resistances.filter((item) => item.microbiologia_id === row.id),
-    sensitivities: children.sensitivities.filter((item) => item.microbiologia_id === row.id),
+    resistances: children.resistances.filter((item) => item.muestra_id === row.id),
+    sensitivities: children.sensitivities.filter((item) => item.muestra_id === row.id),
   }))
 }
 
 export async function getCaseMicrobiology(casoId: UUID, excludeRoundId?: UUID) {
-  let query = supabase.from('microbiologia').select('*').eq('caso_id', casoId).order('fecha_toma', { ascending: false })
-  if (excludeRoundId) query = query.neq('ronda_id', excludeRoundId)
-  const { data, error } = await query
+  const roundsResult = await supabase.from('rondas_proa').select('id').eq('caso_id', casoId)
+  if (roundsResult.error) throw roundsResult.error
+  const roundIds = (roundsResult.data ?? [])
+    .map((row) => row.id as UUID)
+    .filter((id) => id && id !== excludeRoundId)
+  if (!roundIds.length) return []
+
+  const { data, error } = await supabase
+    .from('microbiologia')
+    .select('*')
+    .in('ronda_id', roundIds)
+    .order('fecha_toma', { ascending: false })
   if (error) throw error
 
   const rows = (data ?? []) as Microbiology[]
   const children = await getMicrobiologyChildren(rows.map((row) => row.id))
   return rows.map((row) => ({
     microbiology: row,
-    resistances: children.resistances.filter((item) => item.microbiologia_id === row.id),
-    sensitivities: children.sensitivities.filter((item) => item.microbiologia_id === row.id),
+    resistances: children.resistances.filter((item) => item.muestra_id === row.id),
+    sensitivities: children.sensitivities.filter((item) => item.muestra_id === row.id),
   }))
 }
 
@@ -152,16 +161,16 @@ export async function replaceRoundMicrobiology({
   const existingIds = existing.map((item) => item.microbiology.id)
 
   if (existingIds.length) {
-    const resistanceDelete = await supabase.from('resistencia_microbiologica').delete().in('microbiologia_id', existingIds)
+    const resistanceDelete = await supabase.from('resistencia_microbiologica').delete().in('muestra_id', existingIds)
     if (resistanceDelete.error) throw resistanceDelete.error
-    const sensitivityDelete = await supabase.from('sensibilidad_microbiologica').delete().in('microbiologia_id', existingIds)
+    const sensitivityDelete = await supabase.from('sensibilidad_microbiologica').delete().in('muestra_id', existingIds)
     if (sensitivityDelete.error) throw sensitivityDelete.error
     const microDelete = await supabase.from('microbiologia').delete().eq('ronda_id', round.id)
     if (microDelete.error) throw microDelete.error
   }
 
   if (draft.status === 'No') return null
-  if (!round.ips_id || !round.paciente_id || !round.caso_id) throw new Error('La ronda no tiene contexto microbiológico completo.')
+  if (!round.ips_id || !round.id) throw new Error('La ronda no tiene contexto microbiológico completo.')
 
   const isPending = draft.status === 'Pendiente'
   const result = isPending ? 'Pendiente' : draft.resultadoGeneral || 'Pendiente'
@@ -171,8 +180,6 @@ export async function replaceRoundMicrobiology({
     .from('microbiologia')
     .insert({
       ips_id: round.ips_id,
-      paciente_id: round.paciente_id,
-      caso_id: round.caso_id,
       ronda_id: round.id,
       tipo_muestra_id: draft.tipoMuestraId || null,
       tipo_muestra: draft.tipoMuestra.trim() || null,
@@ -195,7 +202,7 @@ export async function replaceRoundMicrobiology({
     const resistances = draft.resistencias
       .map((item) => item.mecanismo.trim())
       .filter(Boolean)
-      .map((mecanismo) => ({ microbiologia_id: data.id, mecanismo }))
+      .map((mecanismo) => ({ muestra_id: data.id, mecanismo }))
     if (resistances.length) {
       const resistanceResult = await supabase.from('resistencia_microbiologica').insert(resistances)
       if (resistanceResult.error) throw resistanceResult.error
@@ -204,7 +211,7 @@ export async function replaceRoundMicrobiology({
     const sensitivities = draft.sensibilidades
       .filter((item) => item.antimicrobiano.trim() && item.resultado)
       .map((item) => ({
-        microbiologia_id: data.id,
+        muestra_id: data.id,
         antimicrobiano_id: item.antimicrobianoId || null,
         antimicrobiano: item.antimicrobiano.trim(),
         resultado: item.resultado,
