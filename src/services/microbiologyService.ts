@@ -170,7 +170,7 @@ export async function replaceRoundMicrobiology({
   }
 
   if (draft.status === 'No') return null
-  if (!round.ips_id || !round.id) throw new Error('La ronda no tiene contexto microbiológico completo.')
+  if (!round.ips_id || !round.caso_id || !round.id) throw new Error('La ronda no tiene contexto microbiológico completo.')
 
   const isPending = draft.status === 'Pendiente'
   const result = isPending ? 'Pendiente' : draft.resultadoGeneral || 'Pendiente'
@@ -180,6 +180,7 @@ export async function replaceRoundMicrobiology({
     .from('microbiologia')
     .insert({
       ips_id: round.ips_id,
+      caso_id: round.caso_id,
       ronda_id: round.id,
       tipo_muestra_id: draft.tipoMuestraId || null,
       tipo_muestra: draft.tipoMuestra.trim() || null,

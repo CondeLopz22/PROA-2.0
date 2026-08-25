@@ -88,7 +88,7 @@ async function insertTreatment({ ips, patient, caseRow, round, antimicrobial }) 
   return result.data
 }
 
-async function replaceMicrobiology({ ips, round, sample, organism, antimicrobial, positive }) {
+async function replaceMicrobiology({ ips, caseRow, round, sample, organism, antimicrobial, positive }) {
   const existing = await supabase.from('microbiologia').select('id').eq('ronda_id', round.id)
   if (existing.error) fail('Microbiología existente', existing.error)
   const ids = (existing.data ?? []).map((row) => row.id)
@@ -110,6 +110,7 @@ async function replaceMicrobiology({ ips, round, sample, organism, antimicrobial
     .from('microbiologia')
     .insert({
       ips_id: ips.id,
+      caso_id: caseRow.id,
       ronda_id: round.id,
       tipo_muestra_id: sample.id,
       tipo_muestra: sampleName,
@@ -241,7 +242,7 @@ const antimicrobial = await firstFrom('catalogo_antimicrobianos', 'Catálogo ant
 const interventionCatalog = await firstFrom('catalogo_intervenciones', 'Catálogo intervenciones')
 
 const negative = await insertRound({ ips: gestion, patient, userId, suffix: 'NEG' })
-await replaceMicrobiology({ ips: gestion, round: negative.round, sample, organism, antimicrobial, positive: false })
+await replaceMicrobiology({ ips: gestion, caseRow: negative.caseRow, round: negative.round, sample, organism, antimicrobial, positive: false })
 const negativeChildren = await supabase
   .from('microbiologia')
   .select('id')
@@ -266,7 +267,7 @@ ok('A. Microbiología negativa')
 
 const positive = await insertRound({ ips: gestion, patient, userId, suffix: 'POS' })
 const treatment = await insertTreatment({ ips: gestion, patient, caseRow: positive.caseRow, round: positive.round, antimicrobial })
-await replaceMicrobiology({ ips: gestion, round: positive.round, sample, organism, antimicrobial, positive: true })
+await replaceMicrobiology({ ips: gestion, caseRow: positive.caseRow, round: positive.round, sample, organism, antimicrobial, positive: true })
 const positiveReload = await supabase
   .from('microbiologia')
   .select('id,microorganismo')
@@ -381,6 +382,7 @@ const duplicateTreatment = await insertTreatment({
 })
 await replaceMicrobiology({
   ips: gestion,
+  caseRow: duplicateRound.caseRow,
   round: duplicateRound.round,
   sample,
   organism,
@@ -397,6 +399,7 @@ await replaceIntervention({
 })
 await replaceMicrobiology({
   ips: gestion,
+  caseRow: duplicateRound.caseRow,
   round: duplicateRound.round,
   sample,
   organism,

@@ -136,6 +136,7 @@ export type TreatmentHistory = {
 export type Microbiology = {
   id: UUID
   ips_id?: UUID | null
+  caso_id?: UUID | null
   ronda_id?: UUID | null
   tipo_muestra_id?: UUID | null
   tipo_muestra?: string | null
