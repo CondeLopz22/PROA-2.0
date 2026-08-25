@@ -58,6 +58,7 @@ export type RoundProa = {
   cama?: string | null
   profesional_id?: UUID | null
   fecha_creacion?: string | null
+  fecha_confirmacion?: string | null
 }
 
 export type ServiceIps = {
@@ -113,6 +114,12 @@ export type AntimicrobialCatalogItem = CatalogItem & {
   nombre_generico?: string | null
 }
 
+export type MicroorganismCatalogItem = CatalogItem & {
+  tipo_germen?: string | null
+}
+
+export type SampleTypeCatalogItem = CatalogItem
+
 export type TreatmentHistory = {
   id: UUID
   tratamiento_id?: UUID | null
@@ -124,6 +131,82 @@ export type TreatmentHistory = {
   valor_nuevo?: string | null
   motivo?: string | null
   tipo_intervencion?: string | null
+}
+
+export type Microbiology = {
+  id: UUID
+  ips_id?: UUID | null
+  caso_id?: UUID | null
+  ronda_id?: UUID | null
+  tipo_muestra_id?: UUID | null
+  tipo_muestra?: string | null
+  fecha_toma?: string | null
+  fecha_resultado?: string | null
+  estado_resultado?: 'Pendiente' | string | null
+  resultado_general?: 'Positivo' | 'Negativo' | 'Contaminado' | 'Sin crecimiento' | 'Pendiente' | string | null
+  microorganismo_id?: UUID | null
+  microorganismo?: string | null
+  tipo_germen?: string | null
+  es_muestra_control?: boolean | null
+  muestra_previa_id?: UUID | null
+  impacto_conducta?: 'Sí' | 'No' | 'Pendiente' | string | null
+  fecha_creacion?: string | null
+}
+
+export type MicrobiologyResistance = {
+  id: UUID
+  muestra_id: UUID
+  mecanismo?: string | null
+  fecha_creacion?: string | null
+}
+
+export type MicrobiologySensitivity = {
+  id: UUID
+  muestra_id: UUID
+  antimicrobiano_id?: UUID | null
+  antimicrobiano?: string | null
+  resultado?: string | null
+  fecha_creacion?: string | null
+}
+
+export type ProaIntervention = {
+  id: UUID
+  ips_id?: UUID | null
+  ronda_id?: UUID | null
+  hubo_intervencion?: boolean | null
+  tipo_intervencion_id?: UUID | null
+  tipo_intervencion?: string | null
+  motivo_no_intervencion?: string | null
+  descripcion_motivo_no_intervencion?: string | null
+  origen_intervencion?: string | null
+  recomendacion?: string | null
+  descripcion_recomendacion?: string | null
+  aceptacion?: 'Sí' | 'No' | 'Parcialmente' | 'Pendiente' | string | null
+  motivo_no_aceptacion?: string | null
+  cumplimiento_guia?: 'Cumple' | 'No cumple' | 'No aplica' | 'No evaluable' | string | null
+  motivo_no_cumplimiento?: string | null
+  dias_ahorrados?: number | null
+  requiere_seguimiento?: boolean | null
+  fecha_seguimiento?: string | null
+  motivo_seguimiento?: string | null
+  fecha_creacion?: string | null
+}
+
+export type InterventionTreatment = {
+  id?: UUID
+  intervencion_id: UUID
+  tratamiento_id: UUID
+}
+
+export type ProaNote = {
+  id: UUID
+  ronda_id: UUID
+  texto_generado?: string | null
+  texto_final?: string | null
+  version?: number | null
+  fecha_confirmacion?: string | null
+  usuario_confirma?: UUID | null
+  fecha_creacion?: string | null
 }
 
 export type PatientLookupResult = {
