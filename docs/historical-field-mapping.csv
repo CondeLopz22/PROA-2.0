@@ -1,0 +1,43 @@
+campo_antiguo,tabla_nueva,campo_nuevo,transformacion,obligatorio,riesgo,observaciones
+DOCUMENTO,pacientes,numero_identificacion,trim/texto,Sí,Medio,Buscar por IPS + tipo + número antes de crear
+TIPO_DOCUMENTO,pacientes,tipo_identificacion,normalizar catálogo local,Sí,Medio,No inventar si falta
+NOMBRES,pacientes,nombres,trim,No,Bajo,Usar solo si existe
+APELLIDOS,pacientes,apellidos,trim,No,Bajo,Usar solo si existe
+SEXO,pacientes,sexo,normalizar texto,No,Bajo,No inferir
+FECHA_NACIMIENTO,pacientes,fecha_nacimiento,parse date,No,Medio,No inventar edad
+FECHA_INGRESO,casos_proa,fecha_apertura,parse timestamptz,No,Alto,Si falta no separar episodios artificialmente
+FECHA_EGRESO,casos_proa,fecha_cierre,parse timestamptz,No,Medio,Solo si corresponde a cierre PROA
+SERVICIO,rondas_proa,servicio_id,resolver contra servicios_ips,No,Alto,Si no resuelve dejar revisión
+CAMA,rondas_proa,cama,trim,No,Bajo,
+FECHA_VALORACION,rondas_proa,fecha_hora_ronda,parse timestamptz,Sí,Alto,No crear ronda sin fecha
+TIPO_VALORACION,rondas_proa,tipo_valoracion,map Primera/Seguimiento,No,Medio,Default solo con regla explícita
+DX_PRINCIPAL,diagnosticos_ronda,descripcion_cie10,trim,No,Medio,No inventar código
+CIE10_PRINCIPAL,diagnosticos_ronda,codigo_cie10,upper trim,No,Medio,Guardar separado de descripción
+DX_INFECCIOSO,diagnosticos_ronda,descripcion_cie10,trim,No,Medio,tipo_diagnostico=Infeccioso
+CATEGORIA_PROA,diagnosticos_ronda,categoria_proa,resolver catálogo,No,Medio,
+TIPO_TERAPIA,rondas_proa,tipo_terapia,map Empírica/Dirigida/Profiláctica,No,Medio,
+EVOLUCION,rondas_proa,evolucion_clinica,map opciones exactas,No,Medio,
+ATB_1,tratamientos_antimicrobianos,antimicrobiano,resolver catálogo,No,Alto,Cada ATB_n genera fila
+ATB_1_ID,tratamientos_antimicrobianos,antimicrobiano_id,resolver UUID,No,Alto,Preferido cuando existe
+DOSIS_1,tratamientos_antimicrobianos,dosis,numérico/texto,No,Medio,
+UNIDAD_1,tratamientos_antimicrobianos,unidad,trim,No,Bajo,
+FRECUENCIA_1,tratamientos_antimicrobianos,frecuencia,trim,No,Bajo,
+VIA_1,tratamientos_antimicrobianos,via,normalizar,No,Medio,
+FECHA_INICIO_ATB_1,tratamientos_antimicrobianos,fecha_inicio,parse date,No,Medio,
+FECHA_FIN_ATB_1,tratamientos_antimicrobianos,fecha_fin,parse date,No,Medio,
+CULTIVO_TIPO,microbiologia,tipo_muestra,trim,No,Medio,Solo si hay estudio
+CULTIVO_FECHA,microbiologia,fecha_toma,parse timestamptz,No,Medio,
+RESULTADO_CULTIVO,microbiologia,resultado_general,map opciones,No,Medio,
+MICROORGANISMO,microbiologia,microorganismo,resolver catálogo,No,Alto,Obligatorio si positivo para dato completo
+RESISTENCIA,resistencia_microbiologica,mecanismo,separar mecanismos,No,Medio,Una fila por mecanismo
+SENSIBILIDAD,sensibilidad_microbiologica,resultado,map S/I/R,No,Medio,Crear solo sensibilidad relevante
+INTERVENCION,intervenciones_proa,tipo_intervencion,resolver catálogo,No,Alto,Solo con evidencia
+ACEPTACION,intervenciones_proa,aceptacion,map opciones,No,Medio,
+CUMPLIMIENTO,intervenciones_proa,cumplimiento_guia,map opciones,No,Medio,
+NOTA,notas_proa,texto_final,copiar texto,No,Medio,No inventar texto_generado
+PERIODO_DDD,ddd_registros,periodo,primer día del mes,No,Medio,Fuente DDD
+CAMAS_DIA,ddd_registros,camas_dia_ocupadas,numérico,No,Alto,Denominador principal
+DDD_ATB,ddd_consumos,antimicrobiano_id,resolver catálogo,No,Alto,
+DDD_VIA,ddd_consumos,via,normalizar,No,Medio,
+GRAMOS_CONSUMIDOS,ddd_consumos,gramos_consumidos,numérico,No,Alto,Si existe fuente completa preferir recalcular
+DDD_CALCULADAS,ddd_consumos,ddd_calculadas,resultado histórico,No,Alto,Importar solo si clase B autorizada
