@@ -15,6 +15,19 @@ async function countQuery(label: string, query: PromiseLike<{ count: number | nu
   return result.count ?? 0
 }
 
+async function countRoundsWithoutDiagnosis(ipsId: UUID) {
+  const rounds = await supabase.from('rondas_proa').select('id').eq('ips_id', ipsId).limit(1000)
+  if (rounds.error) throw new Error(`rondas sin diagnóstico: ${rounds.error.message}`)
+  const roundIds = (rounds.data ?? []).map((round) => round.id)
+  if (!roundIds.length) return 0
+
+  const diagnoses = await supabase.from('diagnosticos_ronda').select('ronda_id').in('ronda_id', roundIds)
+  if (diagnoses.error) throw new Error(`rondas sin diagnóstico: ${diagnoses.error.message}`)
+
+  const roundsWithDiagnosis = new Set((diagnoses.data ?? []).map((diagnosis) => diagnosis.ronda_id))
+  return roundIds.filter((roundId) => !roundsWithDiagnosis.has(roundId)).length
+}
+
 export async function getDataQualityIssues(ipsId: UUID): Promise<QualityIssue[]> {
   const [
     roundsWithoutDiagnosis,
@@ -26,14 +39,7 @@ export async function getDataQualityIssues(ipsId: UUID): Promise<QualityIssue[]>
     confirmedRounds,
     notes,
   ] = await Promise.all([
-    countQuery(
-      'rondas sin diagnóstico',
-      supabase
-        .from('rondas_proa')
-        .select('id', { count: 'exact', head: true })
-        .eq('ips_id', ipsId)
-        .not('id', 'in', '(select ronda_id from diagnosticos_ronda)'),
-    ),
+    countRoundsWithoutDiagnosis(ipsId),
     countQuery(
       'tratamientos sin antimicrobiano_id',
       supabase
@@ -84,7 +90,14 @@ export async function getDataQualityIssues(ipsId: UUID): Promise<QualityIssue[]>
         .eq('ips_id', ipsId)
         .eq('estado', 'Confirmada'),
     ),
-    countQuery('notas confirmadas', supabase.from('notas_proa').select('id', { count: 'exact', head: true }).not('fecha_confirmacion', 'is', null)),
+    countQuery(
+      'notas confirmadas',
+      supabase
+        .from('notas_proa')
+        .select('id,rondas_proa!inner(ips_id)', { count: 'exact', head: true })
+        .eq('rondas_proa.ips_id', ipsId)
+        .not('fecha_confirmacion', 'is', null),
+    ),
   ])
 
   return [

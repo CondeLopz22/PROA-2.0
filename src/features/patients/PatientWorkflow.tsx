@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { CalendarClock, CheckCircle2, FilePlus2, Search, Stethoscope, UserPlus } from 'lucide-react'
+import { CalendarClock, CheckCircle2, FilePlus2, Lock, Search, Stethoscope, UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useIps } from '../ips/ipsContext'
@@ -8,6 +8,7 @@ import { ageFromBirthDate, formatDate, formatDateTime } from '../../lib/date'
 import { getIpsServices } from '../../services/ipsService'
 import {
   createCase,
+  closeCase,
   createPatient,
   findPatientInIps,
   patientDisplayName,
@@ -19,6 +20,7 @@ import type { CaseProa, Patient, PatientLookupResult, RoundProa, ServiceIps } fr
 type Mode = 'round' | 'records'
 
 const identificationTypes = ['CC', 'TI', 'RC', 'CE', 'PA', 'MS', 'AS']
+const closeReasons = ['Egreso/alta', 'Finalización seguimiento PROA', 'Fallecimiento', 'Traslado', 'Otro']
 
 export function PatientWorkflow({ mode }: { mode: Mode }) {
   const { activeIps, status: ipsStatus } = useIps()
@@ -65,10 +67,15 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
 
   async function handleCaseCreated(caso: CaseProa) {
     if (!lookup) return
+    const isClosed = Boolean(caso.fecha_cierre || caso.estado?.toLowerCase() === 'cerrado')
+    const historicalCases = [
+      ...(lookup.activeCase && lookup.activeCase.id !== caso.id ? [lookup.activeCase] : []),
+      ...lookup.historicalCases.filter((historical) => historical.id !== caso.id),
+    ]
     setLookup({
       ...lookup,
-      activeCase: caso,
-      historicalCases: lookup.historicalCases,
+      activeCase: isClosed ? null : caso,
+      historicalCases: isClosed ? [caso, ...historicalCases] : historicalCases,
     })
   }
 
@@ -246,6 +253,7 @@ function PatientSummary({
   const [services, setServices] = useState<ServiceIps[]>([])
   const [serviceId, setServiceId] = useState('')
   const [cama, setCama] = useState('')
+  const [closeReason, setCloseReason] = useState('Finalización seguimiento PROA')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -255,6 +263,7 @@ function PatientSummary({
   )
   const selectedCase = allCases.find((caso) => caso.id === selectedCaseId) ?? lookup.activeCase
   const hasActiveCase = Boolean(lookup.activeCase)
+  const selectedCaseClosed = Boolean(selectedCase?.fecha_cierre || selectedCase?.estado?.toLowerCase() === 'cerrado')
   const age = ageFromBirthDate(lookup.patient.fecha_nacimiento)
 
   useEffect(() => {
@@ -289,6 +298,10 @@ function PatientSummary({
 
   async function openRound() {
     let caseForRound = selectedCase ?? lookup.activeCase
+    if (caseForRound?.fecha_cierre || caseForRound?.estado?.toLowerCase() === 'cerrado') {
+      setError('El caso está cerrado. Crea un nuevo caso para un nuevo episodio.')
+      return
+    }
     if (!caseForRound) {
       caseForRound = await createNewCase()
       if (!caseForRound) return
@@ -309,6 +322,21 @@ function PatientSummary({
       onRoundCreated(round)
     } catch (roundError) {
       setError(readableError(roundError))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function closeSelectedCase() {
+    if (!selectedCase || selectedCaseClosed) return
+    setLoading(true)
+    setError(null)
+    try {
+      const closed = await closeCase({ caseId: selectedCase.id, ipsId, motivoCierre: closeReason })
+      onCaseCreated(closed)
+      setSelectedCaseId(closed.id)
+    } catch (closeError) {
+      setError(readableError(closeError))
     } finally {
       setLoading(false)
     }
@@ -389,9 +417,24 @@ function PatientSummary({
               <input value={cama} onChange={(event) => setCama(event.target.value)} />
             </label>
           </div>
+          {selectedCase ? (
+            <div className="form-grid compact">
+              <label>
+                Motivo cierre caso
+                <select disabled={selectedCaseClosed || loading} value={closeReason} onChange={(event) => setCloseReason(event.target.value)}>
+                  {closeReasons.map((reason) => <option key={reason}>{reason}</option>)}
+                </select>
+              </label>
+              <button className="ghost-button" disabled={selectedCaseClosed || loading} onClick={closeSelectedCase} type="button">
+                <Lock size={16} />
+                Cerrar caso
+              </button>
+            </div>
+          ) : null}
+          {selectedCaseClosed ? <p className="muted">Caso cerrado. Para continuar seguimiento, crea un nuevo caso.</p> : null}
           <div className="button-row">
             {lookup.activeCase ? (
-              <button className="primary-button" disabled={loading} onClick={openRound} type="button">
+              <button className="primary-button" disabled={loading || selectedCaseClosed} onClick={openRound} type="button">
                 <CalendarClock size={16} />
                 Continuar caso activo
               </button>
@@ -402,7 +445,7 @@ function PatientSummary({
             </button>
             <button
               className="primary-button"
-              disabled={loading || !selectedCase}
+              disabled={loading || !selectedCase || selectedCaseClosed}
               onClick={openRound}
               type="button"
             >

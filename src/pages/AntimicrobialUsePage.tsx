@@ -53,7 +53,7 @@ export function AntimicrobialUsePage() {
   const [success, setSuccess] = useState<string | null>(null)
 
   const period = monthStart(periodMonth)
-  const readOnly = record?.estado === 'Confirmado'
+  const readOnly = record?.estado === 'Confirmado' || record?.estado === 'Anulado'
   const periodDays = daysInMonth(period)
   const qualityAlerts = useMemo(() => {
     const alerts = new Set<string>()

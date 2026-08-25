@@ -108,3 +108,28 @@ export async function createCase(input: NewCaseInput) {
   if (error) throw error
   return data as CaseProa
 }
+
+export async function closeCase({
+  caseId,
+  ipsId,
+  motivoCierre,
+}: {
+  caseId: UUID
+  ipsId: UUID
+  motivoCierre: string
+}) {
+  const { data, error } = await supabase
+    .from('casos_proa')
+    .update({
+      estado: 'Cerrado',
+      fecha_cierre: new Date().toISOString(),
+      motivo_cierre: motivoCierre,
+    })
+    .eq('id', caseId)
+    .eq('ips_id', ipsId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as CaseProa
+}

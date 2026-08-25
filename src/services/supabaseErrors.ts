@@ -1,4 +1,8 @@
+import { logClientError } from '../lib/errorLogger'
+
 export function readableError(error: unknown) {
+  logClientError({ module: 'supabase', error })
+
   if (!error) return 'Ocurrió un error inesperado.'
   const message =
     typeof error === 'string'
@@ -18,6 +22,7 @@ export function readableError(error: unknown) {
   }
   if (normalized.includes('duplicate') || normalized.includes('unique')) return 'Ya existe un registro con esos datos.'
   if (normalized.includes('not found')) return 'No se encontró el registro solicitado.'
+  if (normalized.includes('oms') || normalized.includes('ddd')) return 'No se encontró referencia OMS para esta combinación.'
 
-  return message
+  return 'No se pudo completar la operación. Intenta nuevamente o contacta soporte.'
 }
