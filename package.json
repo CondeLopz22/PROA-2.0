@@ -13,6 +13,8 @@
     "validate:3": "node scripts/validate-milestone-3.mjs",
     "validate:e2e": "node scripts/validate-e2e-milestone-4.mjs",
     "validate:6a": "node scripts/validate-milestone-6a.mjs",
+    "validate:6b": "node scripts/validate-milestone-6b.mjs",
+    "validate:6b1": "node scripts/validate-milestone-6b1.mjs",
     "test:ui": "vitest run --environment jsdom",
     "migrate:pilot": "node scripts/migrate-pilot.mjs",
     "preview": "vite preview"
@@ -22,7 +24,8 @@
     "lucide-react": "^1.34.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.2"
+    "react-router-dom": "^7.18.2",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

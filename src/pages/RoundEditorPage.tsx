@@ -63,6 +63,7 @@ import {
   continueTreatment,
   createTreatment,
   estimatedEndDate,
+  findActiveTreatmentDuplicate,
   modifyTreatment,
   suspendTreatment,
   treatmentDay,
@@ -300,6 +301,10 @@ export function RoundEditorPage() {
     )
     if (repeatedDraft) return 'Hay antimicrobianos duplicados en esta ronda. Revisa el catálogo y la fecha de inicio.'
 
+    const treatmentsRemainingActive = activeTreatments.filter((treatment) => treatmentActions[treatment.id]?.kind !== 'Suspender')
+    const duplicatesActiveTreatment = newTreatments.some((draft) => findActiveTreatmentDuplicate(treatmentsRemainingActive, draft))
+    if (duplicatesActiveTreatment) return 'Este antimicrobiano ya se encuentra activo en el caso.'
+
     for (const action of Object.values(treatmentActions)) {
       if (action?.kind === 'Suspender') {
         const treatment = activeTreatments.find((item) => treatmentActions[item.id] === action)
@@ -380,16 +385,6 @@ export function RoundEditorPage() {
         : [principalDiagnosis, infectiousDiagnosis, ...relatedDiagnoses]
     const savedDiagnoses = await replaceRoundDiagnoses({ round: savedRound, diagnoses: diagnosisPayload })
 
-    for (const draft of newTreatments) {
-      await createTreatment({
-        ipsId: bundle.round.ips_id,
-        pacienteId: bundle.patient.id,
-        casoId,
-        rondaId: bundle.round.id,
-        draft,
-      })
-    }
-
     for (const treatment of activeTreatments) {
       const action = treatmentActions[treatment.id]
       if (!action) continue
@@ -400,6 +395,16 @@ export function RoundEditorPage() {
       if (action.kind === 'Suspender') {
         await suspendTreatment({ treatment, rondaId: bundle.round.id, suspension: action.suspension })
       }
+    }
+
+    for (const draft of newTreatments) {
+      await createTreatment({
+        ipsId: bundle.round.ips_id,
+        pacienteId: bundle.patient.id,
+        casoId,
+        rondaId: bundle.round.id,
+        draft,
+      })
     }
 
     await replaceRoundMicrobiology({ round: savedRound, draft: microbiology })
@@ -541,6 +546,13 @@ export function RoundEditorPage() {
     )
   }
 
+  const currentServiceName = services.find((item) => item.id === servicioId)?.nombre ?? bundle.caseProa.ubicacion_actual ?? 'Sin servicio'
+  const stickyTreatmentDay = activeTreatments.reduce<number | null>((max, treatment) => {
+    const day = treatmentDay(treatment.fecha_inicio, roundDateForCalculations)
+    if (!day) return max
+    return max === null ? day : Math.max(max, day)
+  }, null)
+
   return (
     <main className="page round-form-page">
       <section className="page-header">
@@ -564,8 +576,28 @@ export function RoundEditorPage() {
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
       {success ? <div className="alert success"><CheckCircle2 size={18} /> {success}</div> : null}
 
+      <section className="round-sticky-header">
+        <div>
+          <strong>{patientDisplayName(bundle.patient)}</strong>
+          <span>{currentServiceName} · {cama || 'Sin cama'} · Caso {bundle.caseProa.estado ?? 'sin estado'} · Ronda {bundle.round.estado ?? 'Borrador'}</span>
+          {stickyTreatmentDay ? <span>Día máximo de tratamiento: {stickyTreatmentDay}</span> : null}
+        </div>
+        <nav className="anchor-nav" aria-label="Secciones de ronda">
+          <a href="#contexto">Contexto</a>
+          <a href="#diagnostico">Diagnóstico</a>
+          <a href="#tratamiento">Tratamiento</a>
+          <a href="#microbiologia">Microbiología</a>
+          <a href="#intervencion">Intervención</a>
+          <a href="#nota">Nota</a>
+        </nav>
+        <div className="button-row">
+          <button className="secondary-button" disabled={saving || readOnly} onClick={saveProgress} type="button">{saving ? 'Guardando...' : 'Guardar'}</button>
+          <button className="primary-button" disabled={saving || readOnly || !finalNote.trim()} onClick={confirmRound} type="button">Confirmar</button>
+        </div>
+      </section>
+
       <section className="continuous-form">
-        <article className="panel">
+        <article className="panel" id="contexto">
           <div className="panel-title">
             <CalendarClock size={20} />
             <div>
@@ -609,7 +641,7 @@ export function RoundEditorPage() {
           </div>
         </article>
 
-        <article className="panel">
+        <article className="panel compact-patient-summary">
           <div className="panel-title">
             <ClipboardPlus size={20} />
             <div>
@@ -617,15 +649,11 @@ export function RoundEditorPage() {
               <p>Resumen de solo lectura. No duplica registro demográfico.</p>
             </div>
           </div>
-          <div className="summary-grid">
-            <SummaryItem label="Paciente" value={patientDisplayName(bundle.patient)} />
-            <SummaryItem label="Identificación" value={`${bundle.patient.tipo_identificacion} ${bundle.patient.numero_identificacion}`} />
-            <SummaryItem label="Sexo" value={bundle.patient.sexo ?? 'Sin registro'} />
-            <SummaryItem label="Edad" value={age === null ? 'Sin registro' : `${age} años`} />
-            <SummaryItem label="Caso" value={bundle.caseProa.estado ?? 'Sin estado'} />
-            <SummaryItem label="Ubicación/cama" value={[services.find((item) => item.id === servicioId)?.nombre ?? bundle.caseProa.ubicacion_actual, cama].filter(Boolean).join(' · ') || 'Sin registro'} />
-            <SummaryItem label="Última ronda" value={formatDateTime(bundle.previousRound?.fecha_hora_ronda)} />
-            <SummaryItem label="Ronda actual" value={formatDateTime(fromDateTimeLocal(fechaRonda))} />
+          <div className="compact-case-line">
+            <strong>{patientDisplayName(bundle.patient)} · {bundle.patient.tipo_identificacion} {bundle.patient.numero_identificacion}</strong>
+            <span>{bundle.patient.sexo ?? 'Sexo sin registro'} · {age === null ? 'Edad sin registro' : `${age} años`}</span>
+            <span>{currentServiceName} · Cama {cama || 'sin registro'}</span>
+            <span>Caso {bundle.caseProa.estado ?? 'sin estado'} desde {formatDate(bundle.caseProa.fecha_apertura)} · Última ronda {formatDateTime(bundle.previousRound?.fecha_hora_ronda)}</span>
           </div>
         </article>
 
@@ -648,6 +676,7 @@ export function RoundEditorPage() {
         ) : null}
 
         {clinicalChanged === 'Sí' || tipoValoracion === 'Primera valoración' ? (
+          <div id="diagnostico">
           <ClinicalContextBlock
             categories={categories}
             principalDiagnosis={principalDiagnosis}
@@ -666,8 +695,9 @@ export function RoundEditorPage() {
             setEvolucion={setEvolucion}
             readOnly={readOnly}
           />
+          </div>
         ) : (
-          <article className="panel compact-note">
+          <article className="panel compact-note" id="diagnostico">
             <p>Se reutilizarán los diagnósticos y tipo de terapia de la ronda anterior. Registra la evolución clínica actual antes de guardar.</p>
             <label>
               Evolución clínica
@@ -679,6 +709,7 @@ export function RoundEditorPage() {
           </article>
         )}
 
+        <div id="tratamiento">
         <AntimicrobialBlock
           activeTreatments={activeTreatments}
           newTreatments={newTreatments}
@@ -688,7 +719,9 @@ export function RoundEditorPage() {
           roundDate={roundDateForCalculations}
           readOnly={readOnly}
         />
+        </div>
 
+        <div id="microbiologia">
         <MicrobiologyBlock
           currentMicrobiology={currentMicrobiology}
           draft={microbiology}
@@ -696,7 +729,9 @@ export function RoundEditorPage() {
           readOnly={readOnly}
           setDraft={setMicrobiology}
         />
+        </div>
 
+        <div id="intervencion">
         <InterventionBlock
           catalog={interventionCatalog}
           draft={intervention}
@@ -705,7 +740,9 @@ export function RoundEditorPage() {
           treatmentActions={treatmentActions}
           treatments={bundle.treatments}
         />
+        </div>
 
+        <div id="nota">
         <NoteBlock
           finalNote={finalNote}
           generatedNote={generatedNote}
@@ -716,6 +753,7 @@ export function RoundEditorPage() {
           readOnly={readOnly}
           saving={saving}
         />
+        </div>
       </section>
     </main>
   )
@@ -1108,6 +1146,12 @@ function NoteBlock({
         value={finalNote}
         onChange={(event) => onFinalNoteChange(event.target.value)}
       />
+      {generatedNote ? (
+        <details className="generated-preview">
+          <summary>Ver texto generado original</summary>
+          <pre>{generatedNote}</pre>
+        </details>
+      ) : null}
       {note?.version ? <p className="muted">Versión {note.version}{note.fecha_confirmacion ? ` · Confirmada ${formatDateTime(note.fecha_confirmacion)}` : ''}</p> : null}
       {generatedNote && finalNote !== generatedNote ? <p className="muted">La nota tiene edición manual sobre el texto generado.</p> : null}
       <div className="button-row">

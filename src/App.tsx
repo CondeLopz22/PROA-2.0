@@ -7,6 +7,7 @@ import { IpsProvider } from './features/ips/IpsProvider'
 import { AntimicrobialUsePage } from './pages/AntimicrobialUsePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DataQualityPage } from './pages/DataQualityPage'
+import { IndicatorsPage } from './pages/IndicatorsPage'
 import { PatientsPage } from './pages/PatientsPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RoundEditorPage } from './pages/RoundEditorPage'
@@ -33,7 +34,7 @@ function ProtectedApp() {
           <Route path="/pacientes" element={<PatientsPage />} />
           <Route path="/ddd" element={<AntimicrobialUsePage />} />
           <Route path="/calidad" element={<DataQualityPage />} />
-          <Route path="/indicadores" element={<PlaceholderPage title="Indicadores" />} />
+          <Route path="/indicadores" element={<IndicatorsPage />} />
           <Route path="/administracion" element={<PlaceholderPage title="Administración" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

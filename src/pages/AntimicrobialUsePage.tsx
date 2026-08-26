@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, BarChart3, BedDouble, CheckCircle2, ClipboardCheck, Database, Plus, Save, Trash2 } from 'lucide-react'
 import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
@@ -29,6 +29,7 @@ import { readableError } from '../services/supabaseErrors'
 import type { AntimicrobialCatalogItem, DddConsumption, DddRecord, ServiceIps } from '../types/domain'
 
 const routes = ['IV', 'VO', 'IM', 'SC', 'Inhalada', 'Tópica'] as const
+const DddAnalyticsPanel = lazy(() => import('../features/ddd/DddAnalyticsPanel'))
 
 function numberLabel(value?: string | number | null, digits = 2) {
   const parsed = toNumber(value)
@@ -46,6 +47,7 @@ export function AntimicrobialUsePage() {
   const [record, setRecord] = useState<DddRecord | null>(null)
   const [consumptions, setConsumptions] = useState<DddConsumption[]>([])
   const [drafts, setDrafts] = useState<DddConsumptionDraft[]>([])
+  const [detail, setDetail] = useState<{ row: DddSummaryRow; consumptions: DddConsumption[]; drafts: DddConsumptionDraft[] } | null>(null)
   const [occupancy, setOccupancy] = useState<DddRecordDraft>({ camasDisponibles: '', camasDiaOcupadas: '', porcentajeOcupacion: '' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -53,7 +55,7 @@ export function AntimicrobialUsePage() {
   const [success, setSuccess] = useState<string | null>(null)
 
   const period = monthStart(periodMonth)
-  const readOnly = record?.estado === 'Confirmado'
+  const readOnly = record?.estado === 'Confirmado' || record?.estado === 'Anulado'
   const periodDays = daysInMonth(period)
   const qualityAlerts = useMemo(() => {
     const alerts = new Set<string>()
@@ -111,6 +113,23 @@ export function AntimicrobialUsePage() {
       setSummary(await getDddSummary(activeIps.id, services))
     } catch (openError) {
       setError(readableError(openError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function openSummaryDetail(row: DddSummaryRow) {
+    setSaving(true)
+    setError(null)
+    try {
+      const [nextConsumptions, catalog] = await Promise.all([getDddConsumptions(row.record.id), getAntimicrobialCatalog()])
+      setDetail({
+        row,
+        consumptions: nextConsumptions,
+        drafts: nextConsumptions.map((item) => consumptionDraftFromRow(item, catalog)),
+      })
+    } catch (detailError) {
+      setError(readableError(detailError))
     } finally {
       setSaving(false)
     }
@@ -204,6 +223,12 @@ export function AntimicrobialUsePage() {
       {success ? <div className="alert success"><CheckCircle2 size={18} /> {success}</div> : null}
 
       <section className="continuous-form">
+        {activeIps ? (
+          <Suspense fallback={<section className="panel">Cargando analítica DDD...</section>}>
+            <DddAnalyticsPanel ipsId={activeIps.id} />
+          </Suspense>
+        ) : null}
+
         <article className="panel">
           <div className="panel-title">
             <Database size={20} />
@@ -327,8 +352,9 @@ export function AntimicrobialUsePage() {
               <p>Control de calidad por IPS activa.</p>
             </div>
           </div>
-          <DddSummaryTable rows={summary} />
+          <DddSummaryTable onOpenDetail={openSummaryDetail} rows={summary} />
         </article>
+        {detail ? <DddDetailPanel detail={detail} onClose={() => setDetail(null)} /> : null}
       </section>
     </main>
   )
@@ -511,7 +537,7 @@ function DddResultsTable({
   )
 }
 
-function DddSummaryTable({ rows }: { rows: DddSummaryRow[] }) {
+function DddSummaryTable({ rows, onOpenDetail }: { rows: DddSummaryRow[]; onOpenDetail: (row: DddSummaryRow) => void }) {
   if (!rows.length) return <p className="muted">Sin registros DDD visibles para la IPS activa.</p>
   return (
     <div className="table-wrap">
@@ -525,6 +551,7 @@ function DddSummaryTable({ rows }: { rows: DddSummaryRow[] }) {
             <th>DDD totales</th>
             <th>Ocupación</th>
             <th>Alertas</th>
+            <th>Detalle</th>
           </tr>
         </thead>
         <tbody>
@@ -537,10 +564,41 @@ function DddSummaryTable({ rows }: { rows: DddSummaryRow[] }) {
               <td>{numberLabel(row.totalDdd)}</td>
               <td>{row.hasOccupancy ? `${numberLabel(row.record.camas_dia_ocupadas)} camas-día` : 'Denominador pendiente'}</td>
               <td>{row.qualityAlerts.length ? row.qualityAlerts.join(', ') : 'Completo'}</td>
+              <td><button className="table-action button-link" onClick={() => onOpenDetail(row)} type="button">Ver detalle</button></td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+function DddDetailPanel({
+  detail,
+  onClose,
+}: {
+  detail: { row: DddSummaryRow; consumptions: DddConsumption[]; drafts: DddConsumptionDraft[] }
+  onClose: () => void
+}) {
+  const { row, consumptions, drafts } = detail
+  return (
+    <article className="panel detail-panel" aria-label="Detalle DDD">
+      <div className="subsection-heading">
+        <div>
+          <h2>Detalle del registro DDD</h2>
+          <p className="muted">
+            {formatDate(row.record.periodo)} · {row.service?.nombre ?? row.record.servicio_id} · {numberLabel(row.record.camas_dia_ocupadas)} camas-día
+          </p>
+        </div>
+        <button className="secondary-button" onClick={onClose} type="button">Cerrar</button>
+      </div>
+      <div className="summary-grid">
+        <SummaryItem label="Servicio" value={row.service?.nombre ?? row.record.servicio_id} />
+        <SummaryItem label="Periodo" value={formatDate(row.record.periodo)} />
+        <SummaryItem label="Camas-día" value={numberLabel(row.record.camas_dia_ocupadas)} />
+        <SummaryItem label="Ocupación" value={row.record.porcentaje_ocupacion ? `${numberLabel(row.record.porcentaje_ocupacion, 1)}%` : 'Pendiente'} />
+      </div>
+      <DddResultsTable consumptions={consumptions} drafts={drafts} record={row.record} />
+    </article>
   )
 }

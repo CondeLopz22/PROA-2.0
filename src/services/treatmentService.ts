@@ -37,6 +37,28 @@ export function treatmentName(treatment: Treatment) {
   return treatment.antimicrobiano ?? 'Antimicrobiano'
 }
 
+export function normalizeAntimicrobialName(value?: string | null) {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+
+export function isEquivalentActiveTreatment(treatment: Treatment, draft: Pick<NewTreatmentDraft, 'antimicrobialId' | 'antimicrobialName'>) {
+  if (treatment.estado !== 'Activo') return false
+  if (treatment.antimicrobiano_id && draft.antimicrobialId) return treatment.antimicrobiano_id === draft.antimicrobialId
+  return normalizeAntimicrobialName(treatment.antimicrobiano) === normalizeAntimicrobialName(draft.antimicrobialName)
+}
+
+export function findActiveTreatmentDuplicate(
+  treatments: Treatment[],
+  draft: Pick<NewTreatmentDraft, 'antimicrobialId' | 'antimicrobialName'>,
+) {
+  return treatments.find((treatment) => isEquivalentActiveTreatment(treatment, draft)) ?? null
+}
+
 export function treatmentDay(fechaInicio?: string | null, fechaRonda?: string | null) {
   if (!fechaInicio) return null
   const start = new Date(fechaInicio)
@@ -67,6 +89,17 @@ function reasonWithOther(reason: string, other?: string) {
 async function insertHistory(payload: Record<string, string | number | null>) {
   const { error } = await supabase.from('historial_tratamiento').insert(payload)
   if (error) throw error
+}
+
+async function ensureNoActiveTreatmentDuplicate(casoId: UUID, draft: Pick<NewTreatmentDraft, 'antimicrobialId' | 'antimicrobialName'>) {
+  const { data, error } = await supabase
+    .from('tratamientos_antimicrobianos')
+    .select('id,estado,antimicrobiano_id,antimicrobiano')
+    .eq('caso_id', casoId)
+    .eq('estado', 'Activo')
+  if (error) throw error
+  const duplicate = findActiveTreatmentDuplicate((data ?? []) as Treatment[], draft)
+  if (duplicate) throw new Error('Este antimicrobiano ya se encuentra activo en el caso.')
 }
 
 export async function createTreatment({
@@ -117,6 +150,8 @@ export async function createTreatment({
     if (error) throw error
     return data as Treatment
   }
+
+  await ensureNoActiveTreatmentDuplicate(casoId, draft)
 
   const { data, error } = await supabase.from('tratamientos_antimicrobianos').insert(payload).select('*').single()
   if (error) throw error
