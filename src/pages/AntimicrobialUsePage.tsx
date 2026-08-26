@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, BarChart3, BedDouble, CheckCircle2, ClipboardCheck, Database, Plus, Save, Trash2 } from 'lucide-react'
 import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
@@ -29,6 +29,7 @@ import { readableError } from '../services/supabaseErrors'
 import type { AntimicrobialCatalogItem, DddConsumption, DddRecord, ServiceIps } from '../types/domain'
 
 const routes = ['IV', 'VO', 'IM', 'SC', 'Inhalada', 'Tópica'] as const
+const DddAnalyticsPanel = lazy(() => import('../features/ddd/DddAnalyticsPanel'))
 
 function numberLabel(value?: string | number | null, digits = 2) {
   const parsed = toNumber(value)
@@ -53,7 +54,7 @@ export function AntimicrobialUsePage() {
   const [success, setSuccess] = useState<string | null>(null)
 
   const period = monthStart(periodMonth)
-  const readOnly = record?.estado === 'Confirmado'
+  const readOnly = record?.estado === 'Confirmado' || record?.estado === 'Anulado'
   const periodDays = daysInMonth(period)
   const qualityAlerts = useMemo(() => {
     const alerts = new Set<string>()
@@ -204,6 +205,12 @@ export function AntimicrobialUsePage() {
       {success ? <div className="alert success"><CheckCircle2 size={18} /> {success}</div> : null}
 
       <section className="continuous-form">
+        {activeIps ? (
+          <Suspense fallback={<section className="panel">Cargando analítica DDD...</section>}>
+            <DddAnalyticsPanel ipsId={activeIps.id} />
+          </Suspense>
+        ) : null}
+
         <article className="panel">
           <div className="panel-title">
             <Database size={20} />

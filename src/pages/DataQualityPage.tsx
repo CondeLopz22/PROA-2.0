@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, ClipboardCheck, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useIps } from '../features/ips/ipsContext'
-import { getDataQualityIssues, type QualityIssue } from '../services/dataQualityService'
+import { calculateQualityScore, getDataQualityIssues, type QualityIssue } from '../services/dataQualityService'
 import { readableError } from '../services/supabaseErrors'
 
 export function DataQualityPage() {
@@ -9,6 +10,7 @@ export function DataQualityPage() {
   const [issues, setIssues] = useState<QualityIssue[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const score = calculateQualityScore(issues)
 
   async function load() {
     if (!activeIps) return
@@ -44,6 +46,21 @@ export function DataQualityPage() {
 
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
 
+      <section className="metrics-grid compact-metrics">
+        <article className="metric-card">
+          <span>Calidad global</span>
+          <strong>{score === null ? 'Pendiente' : `${score.toFixed(1)}%`}</strong>
+        </article>
+        <article className="metric-card">
+          <span>Reglas evaluadas</span>
+          <strong>{issues.length}</strong>
+        </article>
+        <article className="metric-card">
+          <span>Hallazgos abiertos</span>
+          <strong>{issues.reduce((sum, issue) => sum + issue.count, 0)}</strong>
+        </article>
+      </section>
+
       <section className="panel">
         <div className="panel-title">
           <ClipboardCheck size={20} />
@@ -61,8 +78,10 @@ export function DataQualityPage() {
                   <th>Código</th>
                   <th>Regla</th>
                   <th>Conteo</th>
+                  <th>Evaluados</th>
                   <th>Severidad</th>
                   <th>Detalle</th>
+                  <th>Acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -71,8 +90,10 @@ export function DataQualityPage() {
                     <td>{issue.code}</td>
                     <td>{issue.label}</td>
                     <td>{issue.count}</td>
+                    <td>{issue.evaluated ?? 'N/A'}</td>
                     <td><span className="pill">{issue.severity}</span></td>
                     <td>{issue.detail}</td>
+                    <td>{issue.reviewPath ? <Link className="table-action" to={issue.reviewPath}>Revisar</Link> : 'N/A'}</td>
                   </tr>
                 ))}
               </tbody>
