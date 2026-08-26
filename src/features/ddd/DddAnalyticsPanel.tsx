@@ -113,11 +113,11 @@ function Chart({ title, data, field }: { title: string; data: TrendPoint[]; fiel
       <h3>{title}</h3>
       <ResponsiveContainer height={260} width="100%">
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
+          <CartesianGrid stroke="#d7e2e6" strokeDasharray="3 3" />
           <XAxis dataKey="periodo" minTickGap={24} />
           <YAxis />
           <Tooltip />
-          <Line connectNulls dataKey={field} dot={false} stroke="#0f766e" strokeWidth={2} type="monotone" />
+          <Line connectNulls dataKey={field} dot={false} stroke={field === 'gramos' ? '#1D5B7A' : '#123B5D'} strokeWidth={2.4} type="monotone" />
         </LineChart>
       </ResponsiveContainer>
     </div>

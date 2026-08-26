@@ -19,6 +19,8 @@ export function DataQualityPage() {
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const score = calculateQualityScore(issues)
+  const scoreValue = score ?? 0
+  const scoreTone = score === null ? 'unknown' : score >= 90 ? 'good' : score >= 75 ? 'watch' : 'risk'
 
   async function load() {
     if (!activeIps) return
@@ -76,6 +78,9 @@ export function DataQualityPage() {
         <article className="metric-card">
           <span>Calidad global</span>
           <strong>{score === null ? 'Pendiente' : `${score.toFixed(1)}%`}</strong>
+          <div className={`quality-progress ${scoreTone}`} aria-label="Progreso visual de calidad de datos">
+            <span style={{ width: `${Math.max(0, Math.min(scoreValue, 100))}%` }} />
+          </div>
         </article>
         <article className="metric-card">
           <span>Reglas evaluadas</span>

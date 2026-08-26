@@ -27,8 +27,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Activity size={20} />
           </span>
           <div>
-            <strong>PROA V2</strong>
-            <span>Multi-IPS</span>
+            <strong>INFECTOMAG</strong>
+            <em>PROA</em>
+            <span>HealthSolutions</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="Principal">
@@ -48,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <div className="ips-chip">
             <Building2 size={16} />
-            {status === 'loading' ? 'Cargando IPS...' : activeIps?.nombre ?? 'Sin IPS activa'}
+            <span>{status === 'loading' ? 'Cargando IPS...' : activeIps?.nombre ?? 'Sin IPS activa'}</span>
           </div>
           <div className="topbar-actions">
             {allowedIps.length > 1 ? (
@@ -67,7 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ))}
               </select>
             ) : null}
-            <span className="user-email">{user?.email}</span>
+            <span className="user-email" title={user?.email}>Usuario activo</span>
             <button className="ghost-button" onClick={signOut} type="button">
               <LogOut size={16} />
               Salir

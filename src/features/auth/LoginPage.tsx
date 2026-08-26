@@ -22,13 +22,31 @@ export function LoginPage() {
 
   return (
     <main className="login-screen">
-      <section className="login-panel">
-        <div className="brand-mark">
-          <Activity size={28} />
+      <section className="login-hero" aria-hidden="true">
+        <div className="microbe-field">
+          <span />
+          <span />
+          <span />
+          <span />
         </div>
-        <p className="eyebrow">PROA V2</p>
-        <h1>Ingreso profesional</h1>
-        <p className="muted">Gestión Multi-IPS del Programa de Optimización de Antimicrobianos.</p>
+        <div className="login-hero-copy">
+          <p className="eyebrow">HealthSolutions</p>
+          <h1>INFECTOMAG PROA</h1>
+          <p>Inteligencia clínica para el uso seguro de antimicrobianos.</p>
+        </div>
+      </section>
+      <section className="login-panel">
+        <div className="login-brand-line">
+          <div className="brand-mark">
+            <Activity size={28} />
+          </div>
+          <div>
+            <p className="eyebrow">INFECTOMAG PROA</p>
+            <h1>Ingreso profesional</h1>
+          </div>
+        </div>
+        <p className="muted">Plataforma Multi-IPS para gestión del Programa de Optimización de Antimicrobianos.</p>
+        <p className="login-tagline">Inteligencia clínica para el uso seguro de antimicrobianos.</p>
 
         <form className="form-stack" onSubmit={submit}>
           <label>
