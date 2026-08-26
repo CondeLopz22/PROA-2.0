@@ -35,6 +35,7 @@ export function DashboardPage() {
   const [rows, setRows] = useState<ActiveCaseRow[]>([])
   const [view, setView] = useState<'Matriz' | 'Kanban'>('Matriz')
   const [activeFilter, setActiveFilter] = useState<OperationalFilter>('Todos')
+  const [selectedKanbanColumn, setSelectedKanbanColumn] = useState<OperationalStatus>('Por valorar')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -139,7 +140,9 @@ export function DashboardPage() {
         ) : null}
         {!loading && rows.length && !filteredRows.length ? <p className="muted">Sin casos para el filtro seleccionado.</p> : null}
         {!loading && filteredRows.length && view === 'Matriz' ? <ActiveMatrix rows={filteredRows} /> : null}
-        {!loading && filteredRows.length && view === 'Kanban' ? <OperationalKanban rows={filteredRows} /> : null}
+        {!loading && filteredRows.length && view === 'Kanban' ? (
+          <OperationalKanban rows={filteredRows} selectedColumn={selectedKanbanColumn} setSelectedColumn={setSelectedKanbanColumn} />
+        ) : null}
       </section>
 
       <section className="panel">
@@ -164,64 +167,113 @@ function Metric({ active, icon, label, value, onClick }: { active: boolean; icon
 
 function ActiveMatrix({ rows }: { rows: ActiveCaseRow[] }) {
   return (
-    <div className="table-wrap">
-      <table className="data-table operational-table">
-        <thead>
-          <tr>
-            <th>Paciente</th>
-            <th>Identificación</th>
-            <th>Servicio / cama</th>
-            <th>Antimicrobiano(s)</th>
-            <th>Día tratamiento</th>
-            <th>Microbiología</th>
-            <th>Última ronda</th>
-            <th>Seguimiento</th>
-            <th>Estado operativo</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.case.id}>
-              <td><strong>{patientDisplayName(row.patient)}</strong></td>
-              <td>{row.patient.tipo_identificacion} {row.patient.numero_identificacion}</td>
-              <td>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</td>
-              <td>{treatmentSummary(row)}</td>
-              <td>{row.maxTreatmentDay ? `Día ${row.maxTreatmentDay}` : 'Sin cálculo'}</td>
-              <td>{microbiologySummary(row)}</td>
-              <td>{formatDateTime(row.latestRound?.fecha_hora_ronda)}</td>
-              <td>{row.requiresFollowUp ? 'Sí' : 'No'}</td>
-              <td><span className="pill">{row.status}</span></td>
-              <td><Link className="table-action" to={`/pacientes?documento=${row.patient.numero_identificacion}`}>Abrir</Link></td>
+    <>
+      <div className="table-wrap desktop-table">
+        <table className="data-table operational-table">
+          <thead>
+            <tr>
+              <th>Paciente</th>
+              <th>Identificación</th>
+              <th>Servicio / cama</th>
+              <th>Antimicrobiano(s)</th>
+              <th>Día tratamiento</th>
+              <th>Microbiología</th>
+              <th>Última ronda</th>
+              <th>Seguimiento</th>
+              <th>Estado operativo</th>
+              <th>Acción</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.case.id}>
+                <td><strong>{patientDisplayName(row.patient)}</strong></td>
+                <td>{row.patient.tipo_identificacion} {row.patient.numero_identificacion}</td>
+                <td>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</td>
+                <td>{treatmentSummary(row)}</td>
+                <td>{row.maxTreatmentDay ? `Día ${row.maxTreatmentDay}` : 'Sin cálculo'}</td>
+                <td>{microbiologySummary(row)}</td>
+                <td>{formatDateTime(row.latestRound?.fecha_hora_ronda)}</td>
+                <td>{row.requiresFollowUp ? 'Sí' : 'No'}</td>
+                <td><span className="pill">{row.status}</span></td>
+                <td><Link className="table-action" to={`/pacientes?documento=${row.patient.numero_identificacion}`}>Abrir</Link></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mobile-card-list patient-card-list">
+        {rows.map((row) => (
+          <Link className="mobile-record-card patient-active-card" key={row.case.id} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
+            <div className="mobile-card-header">
+              <strong>{patientDisplayName(row.patient)}</strong>
+              <span className="pill">{row.status}</span>
+            </div>
+            <span>{row.patient.tipo_identificacion} {row.patient.numero_identificacion}</span>
+            <span>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</span>
+            <span>{treatmentSummary(row)}</span>
+            <span>{row.maxTreatmentDay ? `Día ${row.maxTreatmentDay}` : 'Día no calculable'}</span>
+            <span>{microbiologySummary(row)}</span>
+            <span>Última ronda: {formatDateTime(row.latestRound?.fecha_hora_ronda)}</span>
+            {row.requiresFollowUp ? <span className="pill">Seguimiento requerido</span> : null}
+          </Link>
+        ))}
+      </div>
+    </>
   )
 }
 
-function OperationalKanban({ rows }: { rows: ActiveCaseRow[] }) {
+function OperationalKanban({
+  rows,
+  selectedColumn,
+  setSelectedColumn,
+}: {
+  rows: ActiveCaseRow[]
+  selectedColumn: OperationalStatus
+  setSelectedColumn: (column: OperationalStatus) => void
+}) {
   const columns: KanbanColumn<ActiveCaseRow>[] = kanbanColumns.map((column) => ({
     id: column,
     title: column,
     items: rows.filter((row) => row.status === column || (column === 'Por valorar' && row.status === 'Nuevo / sin ronda')),
   }))
   return (
-    <KanbanBoard
-      columns={columns}
-      getKey={(row) => row.case.id}
-      renderCard={(row, columnId) => (
-        <Link className={`kanban-card ${statusClass(columnId)}`} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
-          <strong>{patientDisplayName(row.patient)}</strong>
-          <span>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</span>
-          <span>{treatmentSummary(row)}</span>
-          <span>{row.maxTreatmentDay ? `Día ${row.maxTreatmentDay}` : 'Día no calculable'} · Última {formatDateTime(row.latestRound?.fecha_hora_ronda)}</span>
-          {row.requiresFollowUp ? <span className="pill">Seguimiento</span> : null}
-        </Link>
-      )}
-    />
+    <>
+      <div className="kanban-mobile-tabs" aria-label="Estados Kanban">
+        {columns.map((column) => (
+          <button
+            className={selectedColumn === column.id ? 'selected' : ''}
+            key={column.id}
+            onClick={() => setSelectedColumn(column.id as OperationalStatus)}
+            type="button"
+          >
+            {shortKanbanLabel(column.id)} ({column.items.length})
+          </button>
+        ))}
+      </div>
+      <KanbanBoard
+        columns={columns}
+        getKey={(row) => row.case.id}
+        selectedColumnId={selectedColumn}
+        renderCard={(row, columnId) => (
+          <Link className={`kanban-card ${statusClass(columnId)}`} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
+            <strong>{patientDisplayName(row.patient)}</strong>
+            <span>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</span>
+            <span>{treatmentSummary(row)}</span>
+            <span>{row.maxTreatmentDay ? `Día ${row.maxTreatmentDay}` : 'Día no calculable'} · Última {formatDateTime(row.latestRound?.fecha_hora_ronda)}</span>
+            {row.requiresFollowUp ? <span className="pill">Seguimiento</span> : null}
+          </Link>
+        )}
+      />
+    </>
   )
+}
+
+function shortKanbanLabel(status: string) {
+  if (status === 'Microbiología pendiente/relevante') return 'Microbiología'
+  if (status === 'Respuesta pendiente') return 'Pendiente'
+  if (status === 'En seguimiento') return 'Seguimiento'
+  return status
 }
 
 function statusClass(status: string) {

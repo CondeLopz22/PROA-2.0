@@ -1,5 +1,5 @@
 import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, Database, Home, LogOut, Menu, Users } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
@@ -19,8 +19,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { allowedIps, activeIps, error, setActiveIps, status } = useIps()
   const [open, setOpen] = useState(false)
 
+  useEffect(() => {
+    if (!open) return
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [open])
+
   return (
     <div className="app-layout">
+      <button
+        aria-label="Cerrar menú"
+        className={`sidebar-backdrop ${open ? 'visible' : ''}`}
+        onClick={() => setOpen(false)}
+        type="button"
+      />
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <span className="brand-mark small">
@@ -44,7 +59,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="content-shell">
         <header className="topbar">
-          <button className="icon-button mobile-only" onClick={() => setOpen((value) => !value)} type="button">
+          <button
+            aria-expanded={open}
+            aria-label="Abrir menú principal"
+            className="icon-button mobile-only"
+            onClick={() => setOpen((value) => !value)}
+            type="button"
+          >
             <Menu size={20} />
           </button>
           <div className="ips-chip">

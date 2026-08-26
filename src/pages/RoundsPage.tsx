@@ -126,38 +126,54 @@ export function RoundsPage() {
         {!loading && !rows.length ? <p className="muted">Sin rondas para el filtro seleccionado.</p> : null}
         {!loading && rows.length && !visibleRows.length ? <p className="muted">Sin rondas que coincidan con la búsqueda y filtros activos.</p> : null}
         {!loading && visibleRows.length ? (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Fecha/hora</th>
-                  <th>Paciente</th>
-                  <th>Servicio</th>
-                  <th>Tipo valoración</th>
-                  <th>Profesional</th>
-                  <th>Intervención</th>
-                  <th>Estado</th>
-                  <th>Seguimiento</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row) => (
-                  <tr key={row.round.id}>
-                    <td>{formatDateTime(row.round.fecha_hora_ronda)}</td>
-                    <td>{row.patient ? patientDisplayName(row.patient) : 'Paciente no visible'}</td>
-                    <td>{row.service?.nombre ?? row.round.ubicacion ?? 'Sin servicio'}</td>
-                    <td>{row.round.tipo_valoracion ?? 'Sin registro'}</td>
-                    <td>{row.professional?.nombre ?? 'Sin profesional'}</td>
-                    <td>{row.intervention?.hubo_intervencion ? 'Sí' : 'No'}</td>
-                    <td><span className="pill">{row.round.estado ?? 'Borrador'}</span></td>
-                    <td>{row.intervention?.requiere_seguimiento ? 'Sí' : 'No'}</td>
-                    <td><Link className="table-action" to={`/rondas/${row.round.id}`}>Abrir</Link></td>
+          <>
+            <div className="table-wrap desktop-table">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Fecha/hora</th>
+                    <th>Paciente</th>
+                    <th>Servicio</th>
+                    <th>Tipo valoración</th>
+                    <th>Profesional</th>
+                    <th>Intervención</th>
+                    <th>Estado</th>
+                    <th>Seguimiento</th>
+                    <th>Acción</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row) => (
+                    <tr key={row.round.id}>
+                      <td>{formatDateTime(row.round.fecha_hora_ronda)}</td>
+                      <td>{row.patient ? patientDisplayName(row.patient) : 'Paciente no visible'}</td>
+                      <td>{row.service?.nombre ?? row.round.ubicacion ?? 'Sin servicio'}</td>
+                      <td>{row.round.tipo_valoracion ?? 'Sin registro'}</td>
+                      <td>{row.professional?.nombre ?? 'Sin profesional'}</td>
+                      <td>{row.intervention?.hubo_intervencion ? 'Sí' : 'No'}</td>
+                      <td><span className="pill">{row.round.estado ?? 'Borrador'}</span></td>
+                      <td>{row.intervention?.requiere_seguimiento ? 'Sí' : 'No'}</td>
+                      <td><Link className="table-action" to={`/rondas/${row.round.id}`}>Abrir</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mobile-card-list">
+              {visibleRows.map((row) => (
+                <Link className="mobile-record-card" key={row.round.id} to={`/rondas/${row.round.id}`}>
+                  <div className="mobile-card-header">
+                    <strong>{row.patient ? patientDisplayName(row.patient) : 'Paciente no visible'}</strong>
+                    <span className="pill">{row.round.estado ?? 'Borrador'}</span>
+                  </div>
+                  <span>{formatDateTime(row.round.fecha_hora_ronda)}</span>
+                  <span>{row.service?.nombre ?? row.round.ubicacion ?? 'Sin servicio'} · {row.round.tipo_valoracion ?? 'Sin registro'}</span>
+                  <span>Profesional: {row.professional?.nombre ?? 'Sin profesional'}</span>
+                  <span>Intervención: {row.intervention?.hubo_intervencion ? 'Sí' : 'No'} · Seguimiento: {row.intervention?.requiere_seguimiento ? 'Sí' : 'No'}</span>
+                </Link>
+              ))}
+            </div>
+          </>
         ) : null}
       </section>
     </main>

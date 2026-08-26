@@ -102,40 +102,60 @@ export function DataQualityPage() {
         </div>
         {loading ? <p className="muted">Consultando calidad...</p> : null}
         {!loading && issues.length ? (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Código</th>
-                  <th>Regla</th>
-                  <th>Conteo</th>
-                  <th>Evaluados</th>
-                  <th>Severidad</th>
-                  <th>Detalle</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {issues.map((issue) => (
-                  <tr key={issue.code}>
-                    <td>{issue.code}</td>
-                    <td>{issue.label}</td>
-                    <td>{issue.count}</td>
-                    <td>{issue.evaluated ?? 'N/A'}</td>
-                    <td><span className="pill">{issue.severity}</span></td>
-                    <td>{issue.detail}</td>
-                    <td>
-                      {issue.reviewPath ? (
-                        <button className="table-action button-link" disabled={loadingDetails} onClick={() => reviewIssue(issue)} type="button">
-                          Revisar
-                        </button>
-                      ) : 'N/A'}
-                    </td>
+          <>
+            <div className="table-wrap desktop-table">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Regla</th>
+                    <th>Conteo</th>
+                    <th>Evaluados</th>
+                    <th>Severidad</th>
+                    <th>Detalle</th>
+                    <th>Acción</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {issues.map((issue) => (
+                    <tr key={issue.code}>
+                      <td>{issue.code}</td>
+                      <td>{issue.label}</td>
+                      <td>{issue.count}</td>
+                      <td>{issue.evaluated ?? 'N/A'}</td>
+                      <td><span className="pill">{issue.severity}</span></td>
+                      <td>{issue.detail}</td>
+                      <td>
+                        {issue.reviewPath ? (
+                          <button className="table-action button-link" disabled={loadingDetails} onClick={() => reviewIssue(issue)} type="button">
+                            Revisar
+                          </button>
+                        ) : 'N/A'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mobile-card-list">
+              {issues.map((issue) => (
+                <article className="mobile-record-card" key={issue.code}>
+                  <div className="mobile-card-header">
+                    <strong>{issue.code}</strong>
+                    <span className="pill">{issue.severity}</span>
+                  </div>
+                  <span>{issue.label}</span>
+                  <span>Conteo: {issue.count} · Evaluados: {issue.evaluated ?? 'N/A'}</span>
+                  <span>{issue.detail}</span>
+                  {issue.reviewPath ? (
+                    <button className="secondary-button mobile-card-action" disabled={loadingDetails} onClick={() => reviewIssue(issue)} type="button">
+                      Revisar
+                    </button>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </>
         ) : null}
         {!loading && issues.every((issue) => issue.count === 0) ? (
           <div className="alert success">
@@ -157,26 +177,37 @@ export function DataQualityPage() {
           {loadingDetails ? <p className="muted">Cargando registros...</p> : null}
           {!loadingDetails && !details.rows.length ? <p className="muted">No se encontraron registros puntuales para esta regla.</p> : null}
           {!loadingDetails && details.rows.length ? (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Registro</th>
-                    <th>Contexto</th>
-                    <th>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {details.rows.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.label}</td>
-                      <td>{row.context ?? 'Sin contexto'}</td>
-                      <td><Link className="table-action" to={row.reviewPath}>Abrir</Link></td>
+            <>
+              <div className="table-wrap desktop-table">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Registro</th>
+                      <th>Contexto</th>
+                      <th>Acción</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {details.rows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.label}</td>
+                        <td>{row.context ?? 'Sin contexto'}</td>
+                        <td><Link className="table-action" to={row.reviewPath}>Abrir</Link></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mobile-card-list">
+                {details.rows.map((row) => (
+                  <Link className="mobile-record-card" key={row.id} to={row.reviewPath}>
+                    <strong>{row.label}</strong>
+                    <span>{row.context ?? 'Sin contexto'}</span>
+                    <span className="table-action">Abrir</span>
+                  </Link>
+                ))}
+              </div>
+            </>
           ) : null}
         </section>
       ) : null}

@@ -101,40 +101,58 @@ export function PatientsPage() {
         {loading ? <p className="muted">Cargando pacientes...</p> : null}
         {!loading && !rows.length ? <p className="muted">Sin pacientes visibles para los filtros actuales.</p> : null}
         {!loading && rows.length ? (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Paciente</th>
-                  <th>Identificación</th>
-                  <th>Estado caso</th>
-                  <th>Servicio actual/último</th>
-                  <th>Antimicrobianos activos</th>
-                  <th>Última ronda</th>
-                  <th>Número de rondas</th>
-                  <th>Apertura</th>
-                  <th>Cierre</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.patient.id}>
-                    <td><strong>{patientDisplayName(row.patient)}</strong></td>
-                    <td>{row.patient.tipo_identificacion} {row.patient.numero_identificacion}</td>
-                    <td><span className="pill">{row.activeCase ? 'Activo' : row.latestCase?.estado ?? 'Sin caso'}</span></td>
-                    <td>{row.latestRound?.ubicacion ?? row.activeCase?.ubicacion_actual ?? row.latestCase?.ubicacion_actual ?? 'Sin registro'}</td>
-                    <td>{row.activeTreatments.length ? row.activeTreatments.map(treatmentName).join(', ') : 'Sin activos'}</td>
-                    <td>{formatDateTime(row.latestRound?.fecha_hora_ronda)}</td>
-                    <td>{row.roundCount}</td>
-                    <td>{formatDate(row.latestCase?.fecha_apertura)}</td>
-                    <td>{formatDate(row.latestCase?.fecha_cierre)}</td>
-                    <td><Link className="table-action" to={`/rondas?new=1`}>{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link></td>
+          <>
+            <div className="table-wrap desktop-table">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Paciente</th>
+                    <th>Identificación</th>
+                    <th>Estado caso</th>
+                    <th>Servicio actual/último</th>
+                    <th>Antimicrobianos activos</th>
+                    <th>Última ronda</th>
+                    <th>Número de rondas</th>
+                    <th>Apertura</th>
+                    <th>Cierre</th>
+                    <th>Acción</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.patient.id}>
+                      <td><strong>{patientDisplayName(row.patient)}</strong></td>
+                      <td>{row.patient.tipo_identificacion} {row.patient.numero_identificacion}</td>
+                      <td><span className="pill">{row.activeCase ? 'Activo' : row.latestCase?.estado ?? 'Sin caso'}</span></td>
+                      <td>{row.latestRound?.ubicacion ?? row.activeCase?.ubicacion_actual ?? row.latestCase?.ubicacion_actual ?? 'Sin registro'}</td>
+                      <td>{row.activeTreatments.length ? row.activeTreatments.map(treatmentName).join(', ') : 'Sin activos'}</td>
+                      <td>{formatDateTime(row.latestRound?.fecha_hora_ronda)}</td>
+                      <td>{row.roundCount}</td>
+                      <td>{formatDate(row.latestCase?.fecha_apertura)}</td>
+                      <td>{formatDate(row.latestCase?.fecha_cierre)}</td>
+                      <td><Link className="table-action" to={`/rondas?new=1`}>{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mobile-card-list">
+              {rows.map((row) => (
+                <article className="mobile-record-card" key={row.patient.id}>
+                  <div className="mobile-card-header">
+                    <strong>{patientDisplayName(row.patient)}</strong>
+                    <span className="pill">{row.activeCase ? 'Activo' : row.latestCase?.estado ?? 'Sin caso'}</span>
+                  </div>
+                  <span>{row.patient.tipo_identificacion} {row.patient.numero_identificacion}</span>
+                  <span>{row.latestRound?.ubicacion ?? row.activeCase?.ubicacion_actual ?? row.latestCase?.ubicacion_actual ?? 'Sin registro'}</span>
+                  <span>{row.activeTreatments.length ? row.activeTreatments.map(treatmentName).join(', ') : 'Sin antimicrobianos activos'}</span>
+                  <span>Última ronda: {formatDateTime(row.latestRound?.fecha_hora_ronda)} · Rondas: {row.roundCount}</span>
+                  <span>Apertura: {formatDate(row.latestCase?.fecha_apertura)} · Cierre: {formatDate(row.latestCase?.fecha_cierre)}</span>
+                  <Link className="primary-button mobile-card-action" to="/rondas?new=1">{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link>
+                </article>
+              ))}
+            </div>
+          </>
         ) : null}
       </section>
     </main>

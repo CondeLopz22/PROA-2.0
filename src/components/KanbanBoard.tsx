@@ -11,16 +11,18 @@ export function KanbanBoard<T>({
   getKey,
   renderCard,
   emptyLabel = 'Sin casos.',
+  selectedColumnId,
 }: {
   columns: KanbanColumn<T>[]
   getKey: (item: T) => string
   renderCard: (item: T, columnId: string) => ReactNode
   emptyLabel?: string
+  selectedColumnId?: string
 }) {
   return (
     <div className="kanban-board">
       {columns.map((column) => (
-        <section className="kanban-column" key={column.id}>
+        <section className={`kanban-column ${selectedColumnId === column.id ? 'mobile-selected' : ''}`} key={column.id}>
           <div className="kanban-column-header">
             <h3>{column.title}</h3>
             <span>{column.items.length}</span>
