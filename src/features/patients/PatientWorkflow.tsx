@@ -272,6 +272,11 @@ function PatientSummary({
   }, [ipsId])
 
   async function createNewCase() {
+    if (lookup.activeCase) {
+      const confirmed = window.confirm('Este paciente ya tiene un caso PROA activo. ¿Deseas abrir un episodio independiente?')
+      if (!confirmed) return null
+    }
+
     setLoading(true)
     setError(null)
     try {

@@ -98,6 +98,26 @@ export async function createTreatment({
     estado: 'Activo',
   }
 
+  const existing = await supabase
+    .from('tratamientos_antimicrobianos')
+    .select('*')
+    .eq('ronda_id', rondaId)
+    .eq('antimicrobiano_id', draft.antimicrobialId)
+    .eq('fecha_inicio', payload.fecha_inicio)
+    .limit(1)
+    .maybeSingle()
+  if (existing.error) throw existing.error
+  if (existing.data) {
+    const { data, error } = await supabase
+      .from('tratamientos_antimicrobianos')
+      .update(payload)
+      .eq('id', existing.data.id)
+      .select('*')
+      .single()
+    if (error) throw error
+    return data as Treatment
+  }
+
   const { data, error } = await supabase.from('tratamientos_antimicrobianos').insert(payload).select('*').single()
   if (error) throw error
 

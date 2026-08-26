@@ -616,9 +616,18 @@ textarea:focus {
   background: var(--surface-soft);
 }
 
+.autocomplete-list button.active {
+  background: var(--primary-soft);
+}
+
 .autocomplete-list span {
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.autocomplete-empty {
+  color: var(--muted);
+  padding: 10px 12px;
 }
 
 .subsection-heading {

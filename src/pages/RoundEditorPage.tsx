@@ -15,6 +15,7 @@ import {
   TestTube2,
   Trash2,
 } from 'lucide-react'
+import { CatalogAutocomplete } from '../components/CatalogAutocomplete'
 import { searchCie10, type Cie10Item } from '../data/cie10'
 import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
@@ -289,6 +290,16 @@ export function RoundEditorPage() {
       }
     }
 
+    const repeatedDraft = newTreatments.some((draft, index) =>
+      newTreatments.findIndex(
+        (candidate) =>
+          candidate.antimicrobialId &&
+          candidate.antimicrobialId === draft.antimicrobialId &&
+          candidate.fechaInicio === draft.fechaInicio,
+      ) !== index
+    )
+    if (repeatedDraft) return 'Hay antimicrobianos duplicados en esta ronda. Revisa el catálogo y la fecha de inicio.'
+
     for (const action of Object.values(treatmentActions)) {
       if (action?.kind === 'Suspender') {
         const treatment = activeTreatments.find((item) => treatmentActions[item.id] === action)
@@ -440,7 +451,16 @@ export function RoundEditorPage() {
     setError(null)
     setSuccess(null)
     try {
-      const { savedRound, savedDiagnoses } = await saveAllBlocks()
+      let savedRound: RoundClinicalBundle['round']
+      let savedDiagnoses: DiagnosisRound[]
+      try {
+        const saved = await saveAllBlocks()
+        savedRound = saved.savedRound
+        savedDiagnoses = saved.savedDiagnoses
+      } catch (saveBeforeNoteError) {
+        throw new Error(`No se pudo guardar la información estructurada antes de generar la nota. ${readableError(saveBeforeNoteError, 'rondas_proa')}`)
+      }
+
       const freshBundle = await getRoundClinicalBundle(savedRound.id, user.id)
       const freshMicrobiology = await getRoundMicrobiology(savedRound.id)
       const freshIntervention = await getRoundIntervention(savedRound.id)
@@ -461,7 +481,10 @@ export function RoundEditorPage() {
       setSuccess('Nota actualizada desde datos estructurados.')
       await load()
     } catch (noteError) {
-      setError(readableError(noteError))
+      const message = noteError instanceof Error && noteError.message.startsWith('No se pudo guardar la información estructurada')
+        ? noteError.message
+        : readableError(noteError, 'nota')
+      setError(message)
     } finally {
       setSaving(false)
     }
@@ -1189,9 +1212,11 @@ function SampleTypeAutocomplete({
 }) {
   const [query, setQuery] = useState(value)
   const [items, setItems] = useState<SampleTypeCatalogItem[]>([])
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let mounted = true
+    setLoading(true)
     getSampleTypes(query)
       .then((result) => {
         if (mounted) setItems(result)
@@ -1199,28 +1224,28 @@ function SampleTypeAutocomplete({
       .catch(() => {
         if (mounted) setItems([])
       })
+      .finally(() => {
+        if (mounted) setLoading(false)
+      })
     return () => {
       mounted = false
     }
   }, [query])
 
   return (
-    <div className="autocomplete">
-      <label>
-        Tipo de muestra
-        <input disabled={readOnly} placeholder="Buscar tipo de muestra" value={query} onChange={(event) => setQuery(event.target.value)} />
-      </label>
-      {query && !readOnly ? (
-        <div className="autocomplete-list">
-          {items.map((item) => (
-            <button key={item.id} onClick={() => onSelect(item)} type="button">
-              <strong>{catalogLabel(item)}</strong>
-              {item.codigo ? <span>{item.codigo}</span> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <CatalogAutocomplete
+      disabled={readOnly}
+      emptyState="No se encontraron tipos de muestra activos."
+      label="Tipo de muestra"
+      loading={loading}
+      onChange={onSelect}
+      onSearchChange={setQuery}
+      optionDescription={(item) => item.codigo}
+      optionLabel={catalogLabel}
+      options={items}
+      placeholder="Buscar tipo de muestra"
+      value={value}
+    />
   )
 }
 
@@ -1235,9 +1260,11 @@ function MicroorganismAutocomplete({
 }) {
   const [query, setQuery] = useState(value)
   const [items, setItems] = useState<MicroorganismCatalogItem[]>([])
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let mounted = true
+    setLoading(true)
     getMicroorganismCatalog(query)
       .then((result) => {
         if (mounted) setItems(result)
@@ -1245,28 +1272,28 @@ function MicroorganismAutocomplete({
       .catch(() => {
         if (mounted) setItems([])
       })
+      .finally(() => {
+        if (mounted) setLoading(false)
+      })
     return () => {
       mounted = false
     }
   }, [query])
 
   return (
-    <div className="autocomplete">
-      <label>
-        Microorganismo
-        <input disabled={readOnly} placeholder="Buscar microorganismo" value={query} onChange={(event) => setQuery(event.target.value)} />
-      </label>
-      {query && !readOnly ? (
-        <div className="autocomplete-list">
-          {items.map((item) => (
-            <button key={item.id} onClick={() => onSelect(item)} type="button">
-              <strong>{catalogLabel(item)}</strong>
-              {item.tipo_germen ? <span>{item.tipo_germen}</span> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <CatalogAutocomplete
+      disabled={readOnly}
+      emptyState="No se encontraron microorganismos activos."
+      label="Microorganismo"
+      loading={loading}
+      onChange={onSelect}
+      onSearchChange={setQuery}
+      optionDescription={(item) => item.tipo_germen}
+      optionLabel={catalogLabel}
+      options={items}
+      placeholder="Buscar microorganismo"
+      value={value}
+    />
   )
 }
 
@@ -1746,9 +1773,11 @@ function AntimicrobialAutocomplete({
 }) {
   const [query, setQuery] = useState(value)
   const [items, setItems] = useState<AntimicrobialCatalogItem[]>([])
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let mounted = true
+    setLoading(true)
     getAntimicrobialCatalog(query)
       .then((result) => {
         if (mounted) setItems(result)
@@ -1756,27 +1785,28 @@ function AntimicrobialAutocomplete({
       .catch(() => {
         if (mounted) setItems([])
       })
+      .finally(() => {
+        if (mounted) setLoading(false)
+      })
     return () => {
       mounted = false
     }
   }, [query])
 
   return (
-    <div className="autocomplete antimicrobial-search">
-      <label>
-        Antimicrobiano
-        <input disabled={readOnly} placeholder="Buscar en catálogo" value={query} onChange={(event) => setQuery(event.target.value)} />
-      </label>
-      {query && !readOnly ? (
-        <div className="autocomplete-list">
-          {items.map((item) => (
-            <button key={item.id} onClick={() => onSelect(item)} type="button">
-              <strong>{catalogLabel(item)}</strong>
-              {item.codigo ? <span>{item.codigo}</span> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <CatalogAutocomplete
+      className="antimicrobial-search"
+      disabled={readOnly}
+      emptyState="No se encontraron antimicrobianos activos."
+      label="Antimicrobiano"
+      loading={loading}
+      onChange={onSelect}
+      onSearchChange={setQuery}
+      optionDescription={(item) => item.codigo_atc ?? item.codigo}
+      optionLabel={catalogLabel}
+      options={items}
+      placeholder="Buscar en catálogo"
+      value={value}
+    />
   )
 }
