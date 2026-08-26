@@ -165,7 +165,7 @@ function Metric({ active, icon, label, value, onClick }: { active: boolean; icon
   )
 }
 
-function ActiveMatrix({ rows }: { rows: ActiveCaseRow[] }) {
+export function ActiveMatrix({ rows }: { rows: ActiveCaseRow[] }) {
   return (
     <>
       <div className="table-wrap desktop-table">
@@ -223,7 +223,7 @@ function ActiveMatrix({ rows }: { rows: ActiveCaseRow[] }) {
   )
 }
 
-function OperationalKanban({
+export function OperationalKanban({
   rows,
   selectedColumn,
   setSelectedColumn,

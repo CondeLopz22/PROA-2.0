@@ -1223,6 +1223,7 @@ textarea:focus {
   grid-template-columns: repeat(5, minmax(230px, 1fr));
   overflow-x: auto;
   padding: 4px 0 10px;
+  scroll-snap-type: x proximity;
 }
 
 .kanban-column {
@@ -1234,6 +1235,7 @@ textarea:focus {
   grid-template-rows: auto 1fr;
   min-height: 160px;
   padding: 12px;
+  scroll-snap-align: start;
 }
 
 .kanban-column-header {
@@ -1575,6 +1577,12 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .kanban-board {
+    grid-auto-columns: minmax(300px, calc((100% - 14px) / 2));
+    grid-auto-flow: column;
+    grid-template-columns: none;
+  }
+
   .page-header {
     align-items: flex-start;
   }
@@ -1588,6 +1596,61 @@ textarea:focus {
   .compact-search {
     max-width: none;
     width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .desktop-table {
+    display: none;
+  }
+
+  .mobile-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-record-card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--hs-blue-medium);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(11, 39, 64, 0.06);
+    color: var(--text);
+    display: grid;
+    gap: 7px;
+    padding: 13px;
+    text-decoration: none;
+  }
+
+  .mobile-record-card:hover,
+  .mobile-record-card:focus-visible {
+    border-color: rgba(29, 91, 122, 0.58);
+    box-shadow: 0 12px 28px rgba(11, 39, 64, 0.12);
+  }
+
+  .mobile-record-card span {
+    color: var(--muted);
+    font-size: 0.88rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-card-header {
+    align-items: flex-start;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .mobile-card-header strong {
+    color: var(--hs-navy);
+    line-height: 1.25;
+  }
+
+  .mobile-card-action {
+    justify-self: stretch;
+    justify-content: center;
+    margin-top: 4px;
   }
 }
 
@@ -1718,59 +1781,6 @@ textarea:focus {
     min-height: 42px;
   }
 
-  .desktop-table {
-    display: none;
-  }
-
-  .mobile-card-list {
-    display: grid;
-    gap: 12px;
-  }
-
-  .mobile-record-card {
-    background: #ffffff;
-    border: 1px solid var(--border);
-    border-left: 4px solid var(--hs-blue-medium);
-    border-radius: 8px;
-    box-shadow: 0 8px 20px rgba(11, 39, 64, 0.06);
-    color: var(--text);
-    display: grid;
-    gap: 7px;
-    padding: 13px;
-    text-decoration: none;
-  }
-
-  .mobile-record-card:hover,
-  .mobile-record-card:focus-visible {
-    border-color: rgba(29, 91, 122, 0.58);
-    box-shadow: 0 12px 28px rgba(11, 39, 64, 0.12);
-  }
-
-  .mobile-record-card span {
-    color: var(--muted);
-    font-size: 0.88rem;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-
-  .mobile-card-header {
-    align-items: flex-start;
-    display: flex;
-    gap: 10px;
-    justify-content: space-between;
-  }
-
-  .mobile-card-header strong {
-    color: var(--hs-navy);
-    line-height: 1.25;
-  }
-
-  .mobile-card-action {
-    justify-self: stretch;
-    justify-content: center;
-    margin-top: 4px;
-  }
-
   .kanban-mobile-tabs {
     display: flex;
     gap: 8px;
@@ -1869,6 +1879,44 @@ textarea:focus {
 
   .mini-bar-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .round-form-page {
+    padding-bottom: 96px;
+  }
+
+  .round-sticky-header {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .round-sticky-header > div:first-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+
+  .round-sticky-header > div:first-child strong {
+    flex: 1 1 100%;
+    font-size: 0.95rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .round-sticky-header > div:first-child span:first-of-type {
+    display: none;
+  }
+
+  .round-sticky-header > div:first-child span {
+    font-size: 0.78rem;
+  }
+
+  .round-sticky-header .button-row {
+    gap: 8px;
+    padding: 9px 10px calc(9px + env(safe-area-inset-bottom));
   }
 }
 
