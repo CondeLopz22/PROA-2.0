@@ -12,6 +12,8 @@
     "validate:2b": "node scripts/validate-milestone-2b.mjs",
     "validate:3": "node scripts/validate-milestone-3.mjs",
     "validate:e2e": "node scripts/validate-e2e-milestone-4.mjs",
+    "validate:6a": "node scripts/validate-milestone-6a.mjs",
+    "test:ui": "vitest run --environment jsdom",
     "migrate:pilot": "node scripts/migrate-pilot.mjs",
     "preview": "vite preview"
   },
@@ -23,12 +25,17 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "jsdom": "^29.1.1",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }
