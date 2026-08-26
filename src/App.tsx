@@ -1,17 +1,19 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './app/AppShell'
 import { AuthProvider } from './features/auth/AuthProvider'
 import { useAuth } from './features/auth/authContext'
 import { LoginPage } from './features/auth/LoginPage'
 import { IpsProvider } from './features/ips/IpsProvider'
-import { AntimicrobialUsePage } from './pages/AntimicrobialUsePage'
-import { DashboardPage } from './pages/DashboardPage'
-import { DataQualityPage } from './pages/DataQualityPage'
-import { IndicatorsPage } from './pages/IndicatorsPage'
-import { PatientsPage } from './pages/PatientsPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
-import { RoundEditorPage } from './pages/RoundEditorPage'
-import { RoundsPage } from './pages/RoundsPage'
+
+const AntimicrobialUsePage = lazy(() => import('./pages/AntimicrobialUsePage').then((module) => ({ default: module.AntimicrobialUsePage })))
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
+const DataQualityPage = lazy(() => import('./pages/DataQualityPage').then((module) => ({ default: module.DataQualityPage })))
+const IndicatorsPage = lazy(() => import('./pages/IndicatorsPage').then((module) => ({ default: module.IndicatorsPage })))
+const PatientsPage = lazy(() => import('./pages/PatientsPage').then((module) => ({ default: module.PatientsPage })))
+const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage').then((module) => ({ default: module.PlaceholderPage })))
+const RoundEditorPage = lazy(() => import('./pages/RoundEditorPage').then((module) => ({ default: module.RoundEditorPage })))
+const RoundsPage = lazy(() => import('./pages/RoundsPage').then((module) => ({ default: module.RoundsPage })))
 
 function ProtectedApp() {
   const { status, user } = useAuth()
@@ -27,17 +29,19 @@ function ProtectedApp() {
   return (
     <IpsProvider>
       <AppShell>
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/rondas" element={<RoundsPage />} />
-          <Route path="/rondas/:roundId" element={<RoundEditorPage />} />
-          <Route path="/pacientes" element={<PatientsPage />} />
-          <Route path="/ddd" element={<AntimicrobialUsePage />} />
-          <Route path="/calidad" element={<DataQualityPage />} />
-          <Route path="/indicadores" element={<IndicatorsPage />} />
-          <Route path="/administracion" element={<PlaceholderPage title="Administración" />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<main className="page"><section className="panel">Cargando módulo...</section></main>}>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/rondas" element={<RoundsPage />} />
+            <Route path="/rondas/:roundId" element={<RoundEditorPage />} />
+            <Route path="/pacientes" element={<PatientsPage />} />
+            <Route path="/ddd" element={<AntimicrobialUsePage />} />
+            <Route path="/calidad" element={<DataQualityPage />} />
+            <Route path="/indicadores" element={<IndicatorsPage />} />
+            <Route path="/administracion" element={<PlaceholderPage title="Administración" />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </AppShell>
     </IpsProvider>
   )
