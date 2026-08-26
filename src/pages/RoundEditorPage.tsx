@@ -34,6 +34,7 @@ import {
   saveRoundContext,
   type DiagnosisDraft,
 } from '../services/clinicalRoundService'
+import { clinicalSectionForMessage, type SectionErrors } from '../services/clinicalErrorService'
 import {
   calculateSavedDays,
   emptyInterventionDraft,
@@ -154,6 +155,16 @@ function emptyTreatmentDraft(): NewTreatmentDraft {
   }
 }
 
+function SectionError({ message }: { message?: string }) {
+  if (!message) return null
+  return (
+    <div className="section-error" role="alert">
+      <AlertCircle size={17} />
+      <span>{message}</span>
+    </div>
+  )
+}
+
 export function RoundEditorPage() {
   const { roundId } = useParams()
   const navigate = useNavigate()
@@ -168,6 +179,7 @@ export function RoundEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sectionErrors, setSectionErrors] = useState<SectionErrors>({})
   const [success, setSuccess] = useState<string | null>(null)
 
   const [fechaRonda, setFechaRonda] = useState('')
@@ -206,6 +218,7 @@ export function RoundEditorPage() {
     if (!roundId || !user) return
     setLoading(true)
     setError(null)
+    setSectionErrors({})
     try {
       const [nextBundle, nextCategories, nextInterventionCatalog] = await Promise.all([
         getRoundClinicalBundle(roundId, user.id),
@@ -273,6 +286,22 @@ export function RoundEditorPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId, user?.id])
+
+  function clearClinicalErrors() {
+    setError(null)
+    setSectionErrors({})
+  }
+
+  function showClinicalError(message: string) {
+    const section = clinicalSectionForMessage(message)
+    if (section) {
+      setError(null)
+      setSectionErrors({ [section]: message })
+      return
+    }
+    setSectionErrors({})
+    setError(message)
+  }
 
   function validateForm() {
     if (!bundle || !activeIps || !user || !casoId) return 'La ronda no tiene contexto completo.'
@@ -426,13 +455,13 @@ export function RoundEditorPage() {
   async function saveProgress() {
     const validationError = validateForm()
     if (validationError) {
-      setError(validationError)
+      showClinicalError(validationError)
       return
     }
     if (!bundle || !user || !casoId) return
 
     setSaving(true)
-    setError(null)
+    clearClinicalErrors()
     setSuccess(null)
 
     try {
@@ -440,7 +469,7 @@ export function RoundEditorPage() {
       setSuccess('Progreso guardado. La ronda permanece en Borrador.')
       await load()
     } catch (saveError) {
-      setError(readableError(saveError))
+      showClinicalError(readableError(saveError))
     } finally {
       setSaving(false)
     }
@@ -453,7 +482,7 @@ export function RoundEditorPage() {
       if (!confirmed) return
     }
     setSaving(true)
-    setError(null)
+    clearClinicalErrors()
     setSuccess(null)
     try {
       let savedRound: RoundClinicalBundle['round']
@@ -489,7 +518,7 @@ export function RoundEditorPage() {
       const message = noteError instanceof Error && noteError.message.startsWith('No se pudo guardar la información estructurada')
         ? noteError.message
         : readableError(noteError, 'nota')
-      setError(message)
+      showClinicalError(message)
     } finally {
       setSaving(false)
     }
@@ -498,7 +527,7 @@ export function RoundEditorPage() {
   async function confirmRound() {
     if (!bundle || !user) return
     setSaving(true)
-    setError(null)
+    clearClinicalErrors()
     setSuccess(null)
     try {
       const { savedRound, savedDiagnoses } = await saveAllBlocks()
@@ -526,7 +555,7 @@ export function RoundEditorPage() {
       setSuccess('Ronda confirmada con nota PROA.')
       await load()
     } catch (confirmError) {
-      setError(readableError(confirmError))
+      showClinicalError(readableError(confirmError))
     } finally {
       setSaving(false)
     }
@@ -694,10 +723,12 @@ export function RoundEditorPage() {
             evolucion={evolucion}
             setEvolucion={setEvolucion}
             readOnly={readOnly}
+            sectionError={sectionErrors.diagnosis}
           />
           </div>
         ) : (
           <article className="panel compact-note" id="diagnostico">
+            <SectionError message={sectionErrors.diagnosis} />
             <p>Se reutilizarán los diagnósticos y tipo de terapia de la ronda anterior. Registra la evolución clínica actual antes de guardar.</p>
             <label>
               Evolución clínica
@@ -718,6 +749,7 @@ export function RoundEditorPage() {
           setTreatmentActions={setTreatmentActions}
           roundDate={roundDateForCalculations}
           readOnly={readOnly}
+          sectionError={sectionErrors.treatment}
         />
         </div>
 
@@ -727,6 +759,7 @@ export function RoundEditorPage() {
           draft={microbiology}
           previousMicrobiology={previousMicrobiology}
           readOnly={readOnly}
+          sectionError={sectionErrors.microbiology}
           setDraft={setMicrobiology}
         />
         </div>
@@ -739,6 +772,7 @@ export function RoundEditorPage() {
           setDraft={setIntervention}
           treatmentActions={treatmentActions}
           treatments={bundle.treatments}
+          sectionError={sectionErrors.intervention}
         />
         </div>
 
@@ -752,6 +786,7 @@ export function RoundEditorPage() {
           onRefresh={refreshNote}
           readOnly={readOnly}
           saving={saving}
+          sectionError={sectionErrors.note}
         />
         </div>
       </section>
@@ -774,12 +809,14 @@ function MicrobiologyBlock({
   previousMicrobiology,
   currentMicrobiology,
   readOnly,
+  sectionError,
 }: {
   draft: MicrobiologyDraft
   setDraft: (value: MicrobiologyDraft) => void
   previousMicrobiology: MicrobiologyBundle[]
   currentMicrobiology: MicrobiologyBundle[]
   readOnly: boolean
+  sectionError?: string
 }) {
   const positive = draft.status === 'Sí' && draft.resultadoGeneral === 'Positivo'
 
@@ -792,6 +829,8 @@ function MicrobiologyBlock({
           <p>Solo se registran estudios relacionados con la ronda.</p>
         </div>
       </div>
+
+      <SectionError message={sectionError} />
 
       {previousMicrobiology.length ? (
         <div className="subtle-list">
@@ -964,6 +1003,7 @@ function InterventionBlock({
   treatments,
   treatmentActions,
   readOnly,
+  sectionError,
 }: {
   catalog: CatalogItem[]
   draft: InterventionDraft
@@ -971,6 +1011,7 @@ function InterventionBlock({
   treatments: Treatment[]
   treatmentActions: Record<string, TreatmentActionDraft | undefined>
   readOnly: boolean
+  sectionError?: string
 }) {
   const calculatedDays = calculateSavedDays(treatments, draft.tratamientosRelacionados)
   const actions = Object.entries(treatmentActions).filter(([, action]) => Boolean(action))
@@ -984,6 +1025,8 @@ function InterventionBlock({
           <p>Intervención, aceptación y adherencia se registran por separado.</p>
         </div>
       </div>
+
+      <SectionError message={sectionError} />
 
       {actions.length ? (
         <div className="subtle-list">
@@ -1120,6 +1163,7 @@ function NoteBlock({
   onConfirm,
   saving,
   readOnly,
+  sectionError,
 }: {
   generatedNote: string
   finalNote: string
@@ -1129,6 +1173,7 @@ function NoteBlock({
   onConfirm: () => void
   saving: boolean
   readOnly: boolean
+  sectionError?: string
 }) {
   return (
     <article className="panel">
@@ -1139,6 +1184,7 @@ function NoteBlock({
           <p>Texto generado por plantilla y editable antes de confirmar.</p>
         </div>
       </div>
+      <SectionError message={sectionError} />
       <textarea
         className="note-editor"
         disabled={readOnly}
@@ -1375,6 +1421,7 @@ function ClinicalContextBlock(props: {
   evolucion: (typeof evolutionOptions)[number] | ''
   setEvolucion: (value: (typeof evolutionOptions)[number] | '') => void
   readOnly: boolean
+  sectionError?: string
 }) {
   const {
     categories,
@@ -1393,6 +1440,7 @@ function ClinicalContextBlock(props: {
     evolucion,
     setEvolucion,
     readOnly,
+    sectionError,
   } = props
 
   return (
@@ -1404,6 +1452,8 @@ function ClinicalContextBlock(props: {
           <p>Diagnósticos como filas independientes y variables analíticas estructuradas.</p>
         </div>
       </div>
+
+      <SectionError message={sectionError} />
 
       <div className="diagnosis-grid">
         <DiagnosisInput
@@ -1587,7 +1637,7 @@ function Cie10Autocomplete({
   )
 }
 
-function AntimicrobialBlock({
+export function AntimicrobialBlock({
   activeTreatments,
   newTreatments,
   setNewTreatments,
@@ -1595,6 +1645,7 @@ function AntimicrobialBlock({
   setTreatmentActions,
   roundDate,
   readOnly,
+  sectionError,
 }: {
   activeTreatments: Treatment[]
   newTreatments: NewTreatmentDraft[]
@@ -1603,6 +1654,7 @@ function AntimicrobialBlock({
   setTreatmentActions: (value: Record<string, TreatmentActionDraft | undefined>) => void
   roundDate?: string | null
   readOnly: boolean
+  sectionError?: string
 }) {
   return (
     <article className="panel">
@@ -1632,6 +1684,7 @@ function AntimicrobialBlock({
       )}
 
       <div className="subsection">
+        <SectionError message={sectionError} />
         <div className="subsection-heading">
           <h3>Nuevos tratamientos</h3>
           <button
