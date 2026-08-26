@@ -10,6 +10,13 @@ export type OperationalStatus =
   | 'Respuesta pendiente'
   | 'Al día'
 
+export type OperationalFilter =
+  | 'Todos'
+  | 'Seguimiento requerido'
+  | 'Rondas hoy'
+  | 'Respuesta pendiente'
+  | 'Microbiología relevante'
+
 export type ActiveCaseRow = {
   case: CaseProa
   patient: Patient
@@ -92,6 +99,40 @@ export function operationalStatusRules() {
     'Intervención requiere seguimiento o hay tratamientos activos: En seguimiento.',
     'Sin señales pendientes anteriores: Al día.',
   ]
+}
+
+export function matchesOperationalFilter(row: ActiveCaseRow, filter: OperationalFilter, today = new Date().toISOString().slice(0, 10)) {
+  if (filter === 'Todos') return true
+  if (filter === 'Seguimiento requerido') return row.requiresFollowUp
+  if (filter === 'Rondas hoy') return row.latestRound?.fecha_hora_ronda?.slice(0, 10) === today
+  if (filter === 'Respuesta pendiente') return row.status === 'Respuesta pendiente'
+  if (filter === 'Microbiología relevante') return row.status === 'Microbiología pendiente/relevante'
+  return true
+}
+
+export function matchesRoundSearch(row: RoundsActivityRow, search: string) {
+  const term = search.trim().toLowerCase()
+  if (!term) return true
+  const patientName = row.patient ? `${row.patient.nombres ?? ''} ${row.patient.apellidos ?? ''}` : ''
+  const haystack = [
+    patientName,
+    row.patient?.numero_identificacion,
+    row.service?.nombre,
+    row.round.ubicacion,
+    row.professional?.nombre,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return haystack.includes(term)
+}
+
+export function matchesRoundContext(row: RoundsActivityRow, params: URLSearchParams) {
+  const tipo = params.get('tipo')
+  const intervention = params.get('intervencion')
+  if (tipo && row.round.tipo_valoracion !== tipo) return false
+  if (intervention === '1' && !row.intervention?.hubo_intervencion) return false
+  return true
 }
 
 export async function getActiveCasesCockpit(ipsId: UUID): Promise<ActiveCaseRow[]> {

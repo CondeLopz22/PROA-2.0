@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, BarChart3, RefreshCw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useIps } from '../features/ips/ipsContext'
 import { getNativeIndicators, type NativeIndicators } from '../services/analyticsService'
 import { readableError } from '../services/supabaseErrors'
@@ -11,6 +12,7 @@ function number(value: number | null, digits = 1) {
 
 export function IndicatorsPage() {
   const { activeIps } = useIps()
+  const navigate = useNavigate()
   const [data, setData] = useState<NativeIndicators | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,7 +40,7 @@ export function IndicatorsPage() {
       <section className="page-header">
         <div>
           <p className="eyebrow">Indicadores</p>
-          <h1>Analítica operacional nativa</h1>
+          <h1>Indicadores PROA</h1>
           <p className="muted">KPIs frecuentes desde MARTs. Looker queda para exploración profunda e informes compartibles.</p>
         </div>
         <button className="secondary-button" disabled={loading} onClick={load} type="button">
@@ -54,36 +56,36 @@ export function IndicatorsPage() {
           <IndicatorSection
             title="Actividad"
             kpis={[
-              ['Casos activos', data.activity.activeCases],
-              ['Rondas', data.activity.rounds],
-              ['Primeras valoraciones', data.activity.firstRounds],
-              ['Seguimientos', data.activity.followUps],
+              ['Casos activos', data.activity.activeCases, () => navigate('/pacientes?estado=Activos')],
+              ['Rondas', data.activity.rounds, () => navigate('/rondas?filtro=Todas')],
+              ['Primeras valoraciones', data.activity.firstRounds, () => navigate('/rondas?filtro=Todas&tipo=Primera%20valoración')],
+              ['Seguimientos', data.activity.followUps, () => navigate('/rondas?filtro=Todas&tipo=Seguimiento')],
             ]}
           />
           <IndicatorSection
             title="Intervenciones"
             kpis={[
-              ['Total intervenciones', data.interventions.total],
-              ['Rondas con intervención', data.interventions.roundsWithIntervention],
-              ['% aceptación', data.interventions.acceptanceRate],
+              ['Total intervenciones', data.interventions.total, () => navigate('/rondas?filtro=Todas&intervencion=1')],
+              ['Rondas con intervención', data.interventions.roundsWithIntervention, () => navigate('/rondas?filtro=Todas&intervencion=1')],
+              ['% aceptación', data.interventions.acceptanceRate, () => navigate('/rondas?filtro=Todas&intervencion=1')],
             ]}
             bars={data.interventions.byType}
           />
           <IndicatorSection
             title="Microbiología"
             kpis={[
-              ['Muestras', data.microbiology.samples],
-              ['% positividad', data.microbiology.positivityRate],
-              ['Con resistencia', data.microbiology.withResistance],
+              ['Muestras', data.microbiology.samples, () => navigate('/rondas?filtro=Todas')],
+              ['% positividad', data.microbiology.positivityRate, () => navigate('/rondas?filtro=Todas')],
+              ['Con resistencia', data.microbiology.withResistance, () => navigate('/calidad')],
             ]}
             bars={data.microbiology.organisms}
           />
           <IndicatorSection
             title="Antimicrobianos"
             kpis={[
-              ['DDD', data.antimicrobials.totalDdd],
-              ['DDD100 último periodo', data.antimicrobials.latestDdd100],
-              ['Gramos consumidos', data.antimicrobials.totalGrams],
+              ['DDD', data.antimicrobials.totalDdd, () => navigate('/ddd')],
+              ['DDD100 último periodo', data.antimicrobials.latestDdd100, () => navigate('/ddd')],
+              ['Gramos consumidos', data.antimicrobials.totalGrams, () => navigate('/ddd')],
             ]}
           />
         </section>
@@ -98,7 +100,7 @@ function IndicatorSection({
   bars = [],
 }: {
   title: string
-  kpis: Array<[string, number | null]>
+  kpis: Array<[string, number | null, (() => void)?]>
   bars?: Array<{ label: string; value: number }>
 }) {
   return (
@@ -111,11 +113,11 @@ function IndicatorSection({
         </div>
       </div>
       <div className="metrics-grid compact-metrics">
-        {kpis.map(([label, value]) => (
-          <div className="summary-item" key={label}>
+        {kpis.map(([label, value, action]) => (
+          <button className="summary-item summary-button" key={label} onClick={action} type="button">
             <span>{label}</span>
             <strong>{number(value)}</strong>
-          </div>
+          </button>
         ))}
       </div>
       {bars.length ? (

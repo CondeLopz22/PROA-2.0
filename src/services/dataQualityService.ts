@@ -11,6 +11,13 @@ export type QualityIssue = {
   reviewPath?: string
 }
 
+export type QualityIssueDetail = {
+  id: UUID
+  label: string
+  context?: string
+  reviewPath: string
+}
+
 async function countQuery(label: string, query: PromiseLike<{ count: number | null; error: unknown }>) {
   const result = await query
   if (result.error) throw new Error(`${label}: ${(result.error as { message?: string }).message ?? 'error de consulta'}`)
@@ -201,4 +208,115 @@ export function calculateQualityScore(issues: QualityIssue[]) {
   if (!evaluated) return null
   const nonConform = issues.reduce((sum, issue) => sum + issue.count, 0)
   return Math.max(0, ((evaluated - nonConform) / evaluated) * 100)
+}
+
+export async function getQualityIssueDetails(ipsId: UUID, code: string): Promise<QualityIssueDetail[]> {
+  if (code === 'DQ-RONDA-DX') {
+    const rounds = await supabase
+      .from('rondas_proa')
+      .select('id,fecha_hora_ronda,estado,paciente_id')
+      .eq('ips_id', ipsId)
+      .order('fecha_hora_ronda', { ascending: false })
+      .limit(150)
+    if (rounds.error) throw rounds.error
+    const roundIds = (rounds.data ?? []).map((round) => round.id)
+    if (!roundIds.length) return []
+    const diagnoses = await supabase.from('diagnosticos_ronda').select('ronda_id').in('ronda_id', roundIds)
+    if (diagnoses.error) throw diagnoses.error
+    const withDiagnosis = new Set((diagnoses.data ?? []).map((diagnosis) => diagnosis.ronda_id))
+    return (rounds.data ?? [])
+      .filter((round) => !withDiagnosis.has(round.id))
+      .map((round) => ({
+        id: round.id,
+        label: `Ronda ${round.fecha_hora_ronda ?? 'sin fecha'}`,
+        context: round.estado ?? 'Sin estado',
+        reviewPath: `/rondas/${round.id}`,
+      }))
+  }
+
+  if (code === 'DQ-TRAT-CAT') {
+    const { data, error } = await supabase
+      .from('tratamientos_antimicrobianos')
+      .select('id,antimicrobiano,estado,caso_id')
+      .eq('ips_id', ipsId)
+      .is('antimicrobiano_id', null)
+      .limit(150)
+    if (error) throw error
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      label: row.antimicrobiano ?? 'Tratamiento sin antimicrobiano',
+      context: `${row.estado ?? 'Sin estado'} · caso ${row.caso_id}`,
+      reviewPath: '/pacientes',
+    }))
+  }
+
+  if (code === 'DQ-MICRO-ORG') {
+    const { data, error } = await supabase
+      .from('microbiologia')
+      .select('id,ronda_id,tipo_muestra,fecha_toma')
+      .eq('ips_id', ipsId)
+      .eq('resultado_general', 'Positivo')
+      .is('microorganismo', null)
+      .limit(150)
+    if (error) throw error
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      label: row.tipo_muestra ?? 'Muestra positiva',
+      context: row.fecha_toma ?? 'Sin fecha',
+      reviewPath: row.ronda_id ? `/rondas/${row.ronda_id}` : '/rondas',
+    }))
+  }
+
+  if (code === 'DQ-INT-TIPO') {
+    const { data, error } = await supabase
+      .from('intervenciones_proa')
+      .select('id,ronda_id,recomendacion,aceptacion')
+      .eq('ips_id', ipsId)
+      .eq('hubo_intervencion', true)
+      .is('tipo_intervencion_id', null)
+      .limit(150)
+    if (error) throw error
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      label: row.recomendacion ?? 'Intervención sin tipo',
+      context: row.aceptacion ?? 'Sin aceptación',
+      reviewPath: row.ronda_id ? `/rondas/${row.ronda_id}` : '/rondas',
+    }))
+  }
+
+  if (code === 'DQ-DDD-DEN') {
+    const { data, error } = await supabase
+      .from('ddd_registros')
+      .select('id,periodo,servicio_id,estado')
+      .eq('ips_id', ipsId)
+      .or('camas_dia_ocupadas.is.null,camas_dia_ocupadas.eq.0')
+      .limit(150)
+    if (error) throw error
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      label: `Periodo ${row.periodo}`,
+      context: `${row.estado ?? 'Sin estado'} · servicio ${row.servicio_id}`,
+      reviewPath: '/ddd',
+    }))
+  }
+
+  if (code === 'DQ-DDD-OMS') {
+    const { data, error } = await supabase
+      .from('ddd_registros')
+      .select('id,periodo,ddd_consumos!inner(id,antimicrobiano_id,via)')
+      .eq('ips_id', ipsId)
+      .is('ddd_consumos.ddd_oms', null)
+      .limit(150)
+    if (error) throw error
+    return (data ?? []).flatMap((record) =>
+      (record.ddd_consumos ?? []).map((consumption: { id: UUID; antimicrobiano_id?: UUID | null; via?: string | null }) => ({
+        id: consumption.id,
+        label: `Consumo ${consumption.antimicrobiano_id ?? 'sin antimicrobiano'}`,
+        context: `${record.periodo} · ${consumption.via ?? 'sin vía'}`,
+        reviewPath: '/ddd',
+      })),
+    )
+  }
+
+  return []
 }

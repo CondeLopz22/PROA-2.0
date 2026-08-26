@@ -387,6 +387,23 @@ textarea:focus {
   padding: 20px;
 }
 
+.metric-button {
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.metric-button:hover,
+.metric-button.selected {
+  border-color: var(--primary);
+  box-shadow: 0 10px 28px rgba(15, 104, 82, 0.12);
+}
+
+.metric-button.selected {
+  background: var(--primary-soft);
+}
+
 .metric-card svg {
   color: var(--primary);
 }
@@ -431,10 +448,21 @@ textarea:focus {
   background: #f8fbfb;
   border: 1px solid var(--border);
   border-radius: 6px;
+  color: var(--text);
   display: grid;
   gap: 4px;
   min-height: 70px;
   padding: 12px;
+}
+
+.summary-button {
+  cursor: pointer;
+  text-align: left;
+}
+
+.summary-button:hover {
+  border-color: var(--primary);
+  box-shadow: 0 8px 18px rgba(15, 104, 82, 0.1);
 }
 
 .summary-item span {
@@ -463,8 +491,13 @@ textarea:focus {
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--primary-strong);
+  display: inline-flex;
   font-size: 0.84rem;
+  line-height: 1.25;
+  max-width: 100%;
   padding: 7px 10px;
+  white-space: normal;
+  word-break: normal;
 }
 
 .case-list {
@@ -858,20 +891,72 @@ textarea:focus {
   max-width: 520px;
 }
 
+.input-with-icon {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.input-with-icon svg {
+  color: var(--muted);
+}
+
 .table-action {
+  background: transparent;
+  border: 0;
   color: var(--primary);
+  cursor: pointer;
   font-weight: 800;
+  padding: 0;
   text-decoration: none;
+}
+
+.table-action:hover {
+  text-decoration: underline;
+}
+
+.button-link:disabled {
+  color: var(--muted);
+  cursor: wait;
+}
+
+.inline-filter {
+  margin: 0;
+  min-height: 44px;
+}
+
+.detail-panel {
+  border-color: var(--primary);
 }
 
 .operational-table td {
   min-width: 140px;
 }
 
+.operational-table .pill {
+  border-radius: 8px;
+  max-width: 220px;
+}
+
+.active-filter-banner {
+  align-items: center;
+  background: var(--primary-soft);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  color: var(--primary-strong);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+}
+
 .kanban-board {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(5, minmax(220px, 1fr));
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(210px, 1fr));
   overflow-x: auto;
   padding-bottom: 8px;
 }
@@ -882,29 +967,85 @@ textarea:focus {
   border-radius: 6px;
   display: grid;
   gap: 10px;
-  min-height: 180px;
-  padding: 12px;
+  grid-template-rows: auto 1fr;
+  min-height: 160px;
+  padding: 10px;
 }
 
-.kanban-column h3 {
+.kanban-column-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.kanban-column-header h3 {
   font-size: 0.92rem;
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.kanban-column-header span {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  min-width: 28px;
+  padding: 3px 8px;
+  text-align: center;
+}
+
+.kanban-column-body {
+  display: grid;
+  gap: 8px;
+  align-content: start;
 }
 
 .kanban-card {
   background: #ffffff;
   border: 1px solid var(--border);
+  border-left: 5px solid var(--primary);
   border-radius: 6px;
   color: var(--text);
   display: grid;
-  gap: 6px;
-  padding: 10px;
+  gap: 5px;
+  min-height: 0;
+  padding: 9px 10px;
   text-decoration: none;
+}
+
+.kanban-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.kanban-card strong {
+  line-height: 1.25;
 }
 
 .kanban-card span {
   color: var(--muted);
   font-size: 0.84rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.kanban-card.status-response {
+  border-left-color: #b54708;
+}
+
+.kanban-card.status-microbiology {
+  border-left-color: #175cd3;
+}
+
+.kanban-card.status-followup {
+  border-left-color: #067647;
+}
+
+.kanban-card.status-current {
+  border-left-color: #667085;
 }
 
 .round-sticky-header {

@@ -2,9 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AlertCircle, CalendarClock, ClipboardList, LayoutGrid, List, Microscope, Plus, RefreshCw, UserCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { KanbanBoard, type KanbanColumn } from '../components/KanbanBoard'
 import { useIps } from '../features/ips/ipsContext'
 import { formatDateTime } from '../lib/date'
-import { getActiveCasesCockpit, operationalStatusRules, type ActiveCaseRow, type OperationalStatus } from '../services/operationalService'
+import {
+  getActiveCasesCockpit,
+  matchesOperationalFilter,
+  operationalStatusRules,
+  type ActiveCaseRow,
+  type OperationalFilter,
+  type OperationalStatus,
+} from '../services/operationalService'
 import { patientDisplayName } from '../services/patientService'
 import { treatmentName } from '../services/treatmentService'
 import { readableError } from '../services/supabaseErrors'
@@ -26,6 +34,7 @@ export function DashboardPage() {
   const { activeIps } = useIps()
   const [rows, setRows] = useState<ActiveCaseRow[]>([])
   const [view, setView] = useState<'Matriz' | 'Kanban'>('Matriz')
+  const [activeFilter, setActiveFilter] = useState<OperationalFilter>('Todos')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -57,6 +66,14 @@ export function DashboardPage() {
       microbiology: rows.filter((row) => row.status === 'Microbiología pendiente/relevante').length,
     }
   }, [rows])
+  const filteredRows = useMemo(
+    () => rows.filter((row) => matchesOperationalFilter(row, activeFilter)),
+    [activeFilter, rows],
+  )
+
+  function toggleFilter(filter: OperationalFilter) {
+    setActiveFilter((current) => (current === filter ? 'Todos' : filter))
+  }
 
   return (
     <main className="page operational-page">
@@ -81,11 +98,11 @@ export function DashboardPage() {
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
 
       <section className="metrics-grid compact-metrics">
-        <Metric icon={<UserCheck size={22} />} label="Pacientes activos" value={kpis.active} />
-        <Metric icon={<CalendarClock size={22} />} label="Seguimiento requerido" value={kpis.followUp} />
-        <Metric icon={<ClipboardList size={22} />} label="Rondas hoy" value={kpis.roundsToday} />
-        <Metric icon={<RefreshCw size={22} />} label="Respuesta pendiente" value={kpis.pendingResponse} />
-        <Metric icon={<Microscope size={22} />} label="Microbiología relevante" value={kpis.microbiology} />
+        <Metric active={activeFilter === 'Todos'} icon={<UserCheck size={22} />} label="Pacientes activos" onClick={() => setActiveFilter('Todos')} value={kpis.active} />
+        <Metric active={activeFilter === 'Seguimiento requerido'} icon={<CalendarClock size={22} />} label="Seguimiento requerido" onClick={() => toggleFilter('Seguimiento requerido')} value={kpis.followUp} />
+        <Metric active={activeFilter === 'Rondas hoy'} icon={<ClipboardList size={22} />} label="Rondas hoy" onClick={() => toggleFilter('Rondas hoy')} value={kpis.roundsToday} />
+        <Metric active={activeFilter === 'Respuesta pendiente'} icon={<RefreshCw size={22} />} label="Respuesta pendiente" onClick={() => toggleFilter('Respuesta pendiente')} value={kpis.pendingResponse} />
+        <Metric active={activeFilter === 'Microbiología relevante'} icon={<Microscope size={22} />} label="Microbiología relevante" onClick={() => toggleFilter('Microbiología relevante')} value={kpis.microbiology} />
       </section>
 
       <section className="panel">
@@ -105,6 +122,12 @@ export function DashboardPage() {
             </button>
           </div>
         </div>
+        {activeFilter !== 'Todos' ? (
+          <div className="active-filter-banner">
+            <span>Filtro activo: {activeFilter}. Mostrando {filteredRows.length} de {rows.length} casos.</span>
+            <button className="ghost-button" onClick={() => setActiveFilter('Todos')} type="button">Limpiar filtro</button>
+          </div>
+        ) : null}
 
         {loading ? <p className="muted">Cargando pacientes activos...</p> : null}
         {!loading && !rows.length ? (
@@ -114,8 +137,9 @@ export function DashboardPage() {
             <Link className="primary-button" to="/rondas?new=1">+ Nueva valoración</Link>
           </div>
         ) : null}
-        {!loading && rows.length && view === 'Matriz' ? <ActiveMatrix rows={rows} /> : null}
-        {!loading && rows.length && view === 'Kanban' ? <OperationalKanban rows={rows} /> : null}
+        {!loading && rows.length && !filteredRows.length ? <p className="muted">Sin casos para el filtro seleccionado.</p> : null}
+        {!loading && filteredRows.length && view === 'Matriz' ? <ActiveMatrix rows={filteredRows} /> : null}
+        {!loading && filteredRows.length && view === 'Kanban' ? <OperationalKanban rows={filteredRows} /> : null}
       </section>
 
       <section className="panel">
@@ -128,13 +152,13 @@ export function DashboardPage() {
   )
 }
 
-function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+function Metric({ active, icon, label, value, onClick }: { active: boolean; icon: ReactNode; label: string; value: number; onClick: () => void }) {
   return (
-    <article className="metric-card">
+    <button className={`metric-card metric-button ${active ? 'selected' : ''}`} onClick={onClick} type="button">
       {icon}
       <span>{label}</span>
       <strong>{value}</strong>
-    </article>
+    </button>
   )
 }
 
@@ -178,25 +202,32 @@ function ActiveMatrix({ rows }: { rows: ActiveCaseRow[] }) {
 }
 
 function OperationalKanban({ rows }: { rows: ActiveCaseRow[] }) {
+  const columns: KanbanColumn<ActiveCaseRow>[] = kanbanColumns.map((column) => ({
+    id: column,
+    title: column,
+    items: rows.filter((row) => row.status === column || (column === 'Por valorar' && row.status === 'Nuevo / sin ronda')),
+  }))
   return (
-    <div className="kanban-board">
-      {kanbanColumns.map((column) => {
-        const columnRows = rows.filter((row) => row.status === column || (column === 'Por valorar' && row.status === 'Nuevo / sin ronda'))
-        return (
-          <section className="kanban-column" key={column}>
-            <h3>{column}</h3>
-            {columnRows.length ? columnRows.map((row) => (
-              <Link className="kanban-card" key={row.case.id} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
-                <strong>{patientDisplayName(row.patient)}</strong>
-                <span>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</span>
-                <span>{treatmentSummary(row)}</span>
-                <span>{row.maxTreatmentDay ? `Día ${row.maxTreatmentDay}` : 'Día no calculable'} · Última {formatDateTime(row.latestRound?.fecha_hora_ronda)}</span>
-                {row.requiresFollowUp ? <span className="pill">Seguimiento</span> : null}
-              </Link>
-            )) : <p className="muted">Sin casos.</p>}
-          </section>
-        )
-      })}
-    </div>
+    <KanbanBoard
+      columns={columns}
+      getKey={(row) => row.case.id}
+      renderCard={(row, columnId) => (
+        <Link className={`kanban-card ${statusClass(columnId)}`} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
+          <strong>{patientDisplayName(row.patient)}</strong>
+          <span>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</span>
+          <span>{treatmentSummary(row)}</span>
+          <span>{row.maxTreatmentDay ? `Día ${row.maxTreatmentDay}` : 'Día no calculable'} · Última {formatDateTime(row.latestRound?.fecha_hora_ronda)}</span>
+          {row.requiresFollowUp ? <span className="pill">Seguimiento</span> : null}
+        </Link>
+      )}
+    />
   )
+}
+
+function statusClass(status: string) {
+  if (status === 'Respuesta pendiente') return 'status-response'
+  if (status === 'Microbiología pendiente/relevante') return 'status-microbiology'
+  if (status === 'En seguimiento') return 'status-followup'
+  if (status === 'Al día') return 'status-current'
+  return 'status-pending'
 }

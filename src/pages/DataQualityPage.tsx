@@ -2,13 +2,21 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, ClipboardCheck, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useIps } from '../features/ips/ipsContext'
-import { calculateQualityScore, getDataQualityIssues, type QualityIssue } from '../services/dataQualityService'
+import {
+  calculateQualityScore,
+  getDataQualityIssues,
+  getQualityIssueDetails,
+  type QualityIssue,
+  type QualityIssueDetail,
+} from '../services/dataQualityService'
 import { readableError } from '../services/supabaseErrors'
 
 export function DataQualityPage() {
   const { activeIps } = useIps()
   const [issues, setIssues] = useState<QualityIssue[]>([])
   const [loading, setLoading] = useState(false)
+  const [details, setDetails] = useState<{ issue: QualityIssue; rows: QualityIssueDetail[] } | null>(null)
+  const [loadingDetails, setLoadingDetails] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const score = calculateQualityScore(issues)
 
@@ -25,6 +33,24 @@ export function DataQualityPage() {
     }
   }
 
+  async function reviewIssue(issue: QualityIssue) {
+    if (!activeIps) return
+    setLoadingDetails(true)
+    setError(null)
+    try {
+      const rows = await getQualityIssueDetails(activeIps.id, issue.code)
+      if (!rows.length && issue.reviewPath) {
+        setDetails({ issue, rows: [{ id: issue.code, label: issue.label, context: 'Abrir módulo relacionado', reviewPath: issue.reviewPath }] })
+      } else {
+        setDetails({ issue, rows })
+      }
+    } catch (detailError) {
+      setError(readableError(detailError))
+    } finally {
+      setLoadingDetails(false)
+    }
+  }
+
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -35,7 +61,7 @@ export function DataQualityPage() {
       <section className="page-header">
         <div>
           <p className="eyebrow">Calidad de datos</p>
-          <h1>Control técnico del piloto</h1>
+          <h1>Calidad de Datos</h1>
           <p className="muted">Revisión básica de inconsistencias visibles por RLS para la IPS activa.</p>
         </div>
         <button className="secondary-button" disabled={loading} onClick={load} type="button">
@@ -93,7 +119,13 @@ export function DataQualityPage() {
                     <td>{issue.evaluated ?? 'N/A'}</td>
                     <td><span className="pill">{issue.severity}</span></td>
                     <td>{issue.detail}</td>
-                    <td>{issue.reviewPath ? <Link className="table-action" to={issue.reviewPath}>Revisar</Link> : 'N/A'}</td>
+                    <td>
+                      {issue.reviewPath ? (
+                        <button className="table-action button-link" disabled={loadingDetails} onClick={() => reviewIssue(issue)} type="button">
+                          Revisar
+                        </button>
+                      ) : 'N/A'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -107,6 +139,42 @@ export function DataQualityPage() {
           </div>
         ) : null}
       </section>
+
+      {details ? (
+        <section className="panel">
+          <div className="subsection-heading">
+            <div>
+              <h2>{details.issue.label}</h2>
+              <p className="muted">Registros responsables visibles por RLS para auditoría y corrección.</p>
+            </div>
+            <button className="secondary-button" onClick={() => setDetails(null)} type="button">Cerrar</button>
+          </div>
+          {loadingDetails ? <p className="muted">Cargando registros...</p> : null}
+          {!loadingDetails && !details.rows.length ? <p className="muted">No se encontraron registros puntuales para esta regla.</p> : null}
+          {!loadingDetails && details.rows.length ? (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Registro</th>
+                    <th>Contexto</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {details.rows.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.label}</td>
+                      <td>{row.context ?? 'Sin contexto'}</td>
+                      <td><Link className="table-action" to={row.reviewPath}>Abrir</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </main>
   )
 }

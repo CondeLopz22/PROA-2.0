@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, Plus, RefreshCw } from 'lucide-react'
+import { AlertCircle, Plus, RefreshCw, Search } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PatientWorkflow } from '../features/patients/PatientWorkflow'
 import { useIps } from '../features/ips/ipsContext'
 import { formatDateTime } from '../lib/date'
-import { getRoundsActivity, type RoundsActivityRow } from '../services/operationalService'
+import { getRoundsActivity, matchesRoundContext, matchesRoundSearch, type RoundsActivityRow } from '../services/operationalService'
 import { patientDisplayName } from '../services/patientService'
 import { readableError } from '../services/supabaseErrors'
 
@@ -13,11 +13,15 @@ const filters = ['Pendientes', 'Hoy', 'Borradores', 'Confirmadas', 'Todas'] as c
 export function RoundsPage() {
   const { activeIps } = useIps()
   const [params, setParams] = useSearchParams()
-  const [filter, setFilter] = useState<(typeof filters)[number]>('Pendientes')
+  const initialFilter = filters.includes(params.get('filtro') as (typeof filters)[number]) ? (params.get('filtro') as (typeof filters)[number]) : 'Pendientes'
+  const [filter, setFilter] = useState<(typeof filters)[number]>(initialFilter)
+  const [search, setSearch] = useState(params.get('q') ?? '')
   const [rows, setRows] = useState<RoundsActivityRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const creating = params.get('new') === '1'
+  const contextualFilter = params.get('tipo') || params.get('intervencion')
+  const visibleRows = rows.filter((row) => matchesRoundSearch(row, search) && matchesRoundContext(row, params))
 
   async function load() {
     if (!activeIps) return
@@ -36,6 +40,12 @@ export function RoundsPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIps?.id, filter])
+
+  useEffect(() => {
+    const nextFilter = filters.includes(params.get('filtro') as (typeof filters)[number]) ? (params.get('filtro') as (typeof filters)[number]) : filter
+    if (nextFilter !== filter) setFilter(nextFilter)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   return (
     <main className="page">
@@ -74,15 +84,48 @@ export function RoundsPage() {
           </div>
           <div className="segmented-control">
             {filters.map((item) => (
-              <button className={filter === item ? 'selected' : ''} key={item} onClick={() => setFilter(item)} type="button">
+              <button
+                className={filter === item ? 'selected' : ''}
+                key={item}
+                onClick={() => {
+                  setFilter(item)
+                  const next = new URLSearchParams(params)
+                  next.set('filtro', item)
+                  next.delete('new')
+                  setParams(next)
+                }}
+                type="button"
+              >
                 {item}
               </button>
             ))}
           </div>
         </div>
+        <div className="toolbar-row">
+          <form className="inline-form compact-search" onSubmit={(event) => event.preventDefault()}>
+            <label>
+              Buscar rondas
+              <div className="input-with-icon">
+                <Search size={16} />
+                <input
+                  placeholder="Paciente, identificación, servicio o profesional"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+            </label>
+          </form>
+          {contextualFilter ? (
+            <div className="active-filter-banner inline-filter">
+              <span>Filtro contextual activo.</span>
+              <button className="ghost-button" onClick={() => { setParams({ filtro: filter }); setSearch('') }} type="button">Limpiar</button>
+            </div>
+          ) : null}
+        </div>
         {loading ? <p className="muted">Cargando rondas...</p> : null}
         {!loading && !rows.length ? <p className="muted">Sin rondas para el filtro seleccionado.</p> : null}
-        {!loading && rows.length ? (
+        {!loading && rows.length && !visibleRows.length ? <p className="muted">Sin rondas que coincidan con la búsqueda y filtros activos.</p> : null}
+        {!loading && visibleRows.length ? (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -99,7 +142,7 @@ export function RoundsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {visibleRows.map((row) => (
                   <tr key={row.round.id}>
                     <td>{formatDateTime(row.round.fecha_hora_ronda)}</td>
                     <td>{row.patient ? patientDisplayName(row.patient) : 'Paciente no visible'}</td>

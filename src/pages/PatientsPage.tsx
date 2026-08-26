@@ -14,7 +14,8 @@ const filters = ['Todos', 'Activos', 'Cerrados'] as const
 export function PatientsPage() {
   const { activeIps } = useIps()
   const [params] = useSearchParams()
-  const [filter, setFilter] = useState<(typeof filters)[number]>('Todos')
+  const initialFilter = filters.includes(params.get('estado') as (typeof filters)[number]) ? (params.get('estado') as (typeof filters)[number]) : 'Todos'
+  const [filter, setFilter] = useState<(typeof filters)[number]>(initialFilter)
   const [search, setSearch] = useState(params.get('documento') ?? '')
   const [rows, setRows] = useState<PatientDirectoryRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -39,12 +40,20 @@ export function PatientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIps?.id, filter])
 
+  useEffect(() => {
+    const nextFilter = filters.includes(params.get('estado') as (typeof filters)[number]) ? (params.get('estado') as (typeof filters)[number]) : filter
+    if (nextFilter !== filter) setFilter(nextFilter)
+    const documentParam = params.get('documento')
+    if (documentParam && documentParam !== search) setSearch(documentParam)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
+
   return (
     <main className="page">
       <section className="page-header">
         <div>
           <p className="eyebrow">Pacientes / Registros</p>
-          <h1>Directorio longitudinal</h1>
+          <h1>Pacientes Registrados</h1>
           <p className="muted">Pacientes y casos visibles para la IPS activa. La búsqueda filtra, no bloquea la vista inicial.</p>
         </div>
         <button className="secondary-button" onClick={() => setShowLookup((value) => !value)} type="button">

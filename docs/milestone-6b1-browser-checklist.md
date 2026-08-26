@@ -1,0 +1,22 @@
+# Milestone 6B.1 - checklist navegador
+
+- [ ] Inicio muestra solo casos activos de la IPS activa.
+- [ ] Badge `Microbiología pendiente/relevante` no se desborda ni se superpone en matriz.
+- [ ] KPI `Pacientes activos` limpia filtros y muestra toda la población activa.
+- [ ] KPI `Seguimiento requerido` filtra matriz y Kanban.
+- [ ] KPI `Rondas hoy` filtra matriz y Kanban.
+- [ ] KPI `Respuesta pendiente` filtra matriz y Kanban.
+- [ ] KPI `Microbiología relevante` filtra matriz y Kanban.
+- [ ] Banner de filtro activo muestra conteo y permite limpiar.
+- [ ] Kanban muestra tarjetas compactas y abre el paciente/caso.
+- [ ] Rondas carga automáticamente sin búsqueda obligatoria.
+- [ ] Búsqueda de Rondas filtra por paciente, identificación, servicio y profesional.
+- [ ] Búsqueda de Rondas coexiste con `Pendientes`, `Hoy`, `Borradores`, `Confirmadas`, `Todas`.
+- [ ] Pacientes / Registros muestra título `Pacientes Registrados`.
+- [ ] Indicadores PROA navega desde KPIs hacia Rondas, Pacientes o DDD con filtros contextuales.
+- [ ] Consumo / DDD permite `Ver detalle` en el resumen de periodos.
+- [ ] Detalle DDD muestra consumos, concentración, gramos, DDD OMS, DDD calculadas y denominador.
+- [ ] Calidad de Datos muestra hallazgos y `Revisar` abre registros responsables cuando aplica.
+- [ ] El formulario de ronda rechaza agregar un antimicrobiano activo duplicado en el mismo caso.
+- [ ] Un antimicrobiano suspendido no bloquea un nuevo inicio posterior válido.
+- [ ] Tratamientos existentes de validaciones no se eliminan automáticamente.

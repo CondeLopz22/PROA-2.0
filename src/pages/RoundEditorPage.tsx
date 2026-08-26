@@ -63,6 +63,7 @@ import {
   continueTreatment,
   createTreatment,
   estimatedEndDate,
+  findActiveTreatmentDuplicate,
   modifyTreatment,
   suspendTreatment,
   treatmentDay,
@@ -300,6 +301,10 @@ export function RoundEditorPage() {
     )
     if (repeatedDraft) return 'Hay antimicrobianos duplicados en esta ronda. Revisa el catálogo y la fecha de inicio.'
 
+    const treatmentsRemainingActive = activeTreatments.filter((treatment) => treatmentActions[treatment.id]?.kind !== 'Suspender')
+    const duplicatesActiveTreatment = newTreatments.some((draft) => findActiveTreatmentDuplicate(treatmentsRemainingActive, draft))
+    if (duplicatesActiveTreatment) return 'Este antimicrobiano ya se encuentra activo en el caso.'
+
     for (const action of Object.values(treatmentActions)) {
       if (action?.kind === 'Suspender') {
         const treatment = activeTreatments.find((item) => treatmentActions[item.id] === action)
@@ -380,16 +385,6 @@ export function RoundEditorPage() {
         : [principalDiagnosis, infectiousDiagnosis, ...relatedDiagnoses]
     const savedDiagnoses = await replaceRoundDiagnoses({ round: savedRound, diagnoses: diagnosisPayload })
 
-    for (const draft of newTreatments) {
-      await createTreatment({
-        ipsId: bundle.round.ips_id,
-        pacienteId: bundle.patient.id,
-        casoId,
-        rondaId: bundle.round.id,
-        draft,
-      })
-    }
-
     for (const treatment of activeTreatments) {
       const action = treatmentActions[treatment.id]
       if (!action) continue
@@ -400,6 +395,16 @@ export function RoundEditorPage() {
       if (action.kind === 'Suspender') {
         await suspendTreatment({ treatment, rondaId: bundle.round.id, suspension: action.suspension })
       }
+    }
+
+    for (const draft of newTreatments) {
+      await createTreatment({
+        ipsId: bundle.round.ips_id,
+        pacienteId: bundle.patient.id,
+        casoId,
+        rondaId: bundle.round.id,
+        draft,
+      })
     }
 
     await replaceRoundMicrobiology({ round: savedRound, draft: microbiology })
