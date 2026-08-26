@@ -841,6 +841,26 @@ textarea:focus {
   margin: 16px 24px 0;
 }
 
+.section-error {
+  align-items: flex-start;
+  background: var(--danger-soft);
+  border: 1px solid #fda29b;
+  border-radius: 6px;
+  color: var(--danger);
+  display: flex;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 8px;
+  line-height: 1.35;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+}
+
+.section-error svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
 .operational-page {
   max-width: 1440px;
 }
