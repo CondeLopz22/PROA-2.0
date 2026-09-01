@@ -7,11 +7,11 @@ import { LoginPage } from './features/auth/LoginPage'
 import { IpsProvider } from './features/ips/IpsProvider'
 
 const AntimicrobialUsePage = lazy(() => import('./pages/AntimicrobialUsePage').then((module) => ({ default: module.AntimicrobialUsePage })))
+const AdministrationPage = lazy(() => import('./pages/AdministrationPage').then((module) => ({ default: module.AdministrationPage })))
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const DataQualityPage = lazy(() => import('./pages/DataQualityPage').then((module) => ({ default: module.DataQualityPage })))
 const IndicatorsPage = lazy(() => import('./pages/IndicatorsPage').then((module) => ({ default: module.IndicatorsPage })))
 const PatientsPage = lazy(() => import('./pages/PatientsPage').then((module) => ({ default: module.PatientsPage })))
-const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage').then((module) => ({ default: module.PlaceholderPage })))
 const RoundEditorPage = lazy(() => import('./pages/RoundEditorPage').then((module) => ({ default: module.RoundEditorPage })))
 const RoundsPage = lazy(() => import('./pages/RoundsPage').then((module) => ({ default: module.RoundsPage })))
 
@@ -38,7 +38,7 @@ function ProtectedApp() {
             <Route path="/ddd" element={<AntimicrobialUsePage />} />
             <Route path="/calidad" element={<DataQualityPage />} />
             <Route path="/indicadores" element={<IndicatorsPage />} />
-            <Route path="/administracion" element={<PlaceholderPage title="Administración" />} />
+            <Route path="/administracion" element={<AdministrationPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

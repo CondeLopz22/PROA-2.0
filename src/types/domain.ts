@@ -17,6 +17,14 @@ export type UserProfile = {
   fecha_creacion?: string | null
 }
 
+export type UserIpsMembership = {
+  usuario_id: UUID
+  ips_id: UUID
+  rol?: 'Administrador IPS' | 'PROA' | 'Consulta' | string | null
+  estado?: 'Activo' | 'Inactivo' | string | null
+  fecha_asignacion?: string | null
+}
+
 export type Patient = {
   id: UUID
   ips_id: UUID
