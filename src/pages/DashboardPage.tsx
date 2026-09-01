@@ -16,6 +16,7 @@ import {
 import { patientDisplayName } from '../services/patientService'
 import { treatmentName } from '../services/treatmentService'
 import { readableError } from '../services/supabaseErrors'
+import { canWriteOperationalData } from '../services/permissionService'
 
 const kanbanColumns: OperationalStatus[] = ['Por valorar', 'En seguimiento', 'Microbiología pendiente/relevante', 'Respuesta pendiente', 'Al día']
 
@@ -31,7 +32,8 @@ function microbiologySummary(row: ActiveCaseRow) {
 }
 
 export function DashboardPage() {
-  const { activeIps } = useIps()
+  const { activeIps, userType } = useIps()
+  const canWrite = canWriteOperationalData(userType)
   const [rows, setRows] = useState<ActiveCaseRow[]>([])
   const [view, setView] = useState<'Matriz' | 'Kanban'>('Matriz')
   const [activeFilter, setActiveFilter] = useState<OperationalFilter>('Todos')
@@ -89,10 +91,12 @@ export function DashboardPage() {
             <RefreshCw size={17} />
             Actualizar
           </button>
-          <Link className="primary-button" to="/rondas?new=1">
-            <Plus size={17} />
-            Nueva valoración
-          </Link>
+          {canWrite ? (
+            <Link className="primary-button" to="/rondas?new=1">
+              <Plus size={17} />
+              Nueva valoración
+            </Link>
+          ) : null}
         </div>
       </section>
 
@@ -135,7 +139,7 @@ export function DashboardPage() {
           <div className="empty-state">
             <h2>Sin pacientes PROA activos</h2>
             <p>No existen casos activos para esta IPS en este momento.</p>
-            <Link className="primary-button" to="/rondas?new=1">+ Nueva valoración</Link>
+            {canWrite ? <Link className="primary-button" to="/rondas?new=1">+ Nueva valoración</Link> : null}
           </div>
         ) : null}
         {!loading && rows.length && !filteredRows.length ? <p className="muted">Sin casos para el filtro seleccionado.</p> : null}

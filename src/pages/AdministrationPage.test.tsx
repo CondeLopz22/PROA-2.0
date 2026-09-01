@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   context: {
     profile: {
       usuario_id: 'user-1',
-      nombre: 'Consulta PROA',
+      nombre: 'Cliente IPS',
       estado: 'Activo',
       es_admin_global: false,
       fecha_creacion: '2026-08-01T00:00:00Z',
@@ -16,11 +16,11 @@ const mocks = vi.hoisted(() => ({
     membership: {
       usuario_id: 'user-1',
       ips_id: 'ips-1',
-      rol: 'Consulta',
+      rol: 'IPS Cliente',
       estado: 'Activo',
       fecha_asignacion: '2026-08-01T00:00:00Z',
     },
-    capability: 'consulta',
+    capability: 'ips_cliente',
     canManageInstitution: false,
     canManageUsers: false,
     canManageServices: false,
@@ -51,6 +51,9 @@ vi.mock('../features/ips/ipsContext', () => ({
     status: 'ready',
     allowedIps: [{ id: 'ips-1', nombre: 'GESTION SALUD', estado: 'Activa' }],
     activeIps: { id: 'ips-1', nombre: 'GESTION SALUD', estado: 'Activa' },
+    profile: mocks.context.profile,
+    activeMembership: mocks.context.membership,
+    userType: 'ips_cliente',
     error: null,
     setActiveIps: vi.fn(),
   }),
@@ -169,7 +172,7 @@ describe('AdministrationPage', () => {
     expect(screen.getByRole('button', { name: /Auditoría de datos/i })).toBeInTheDocument()
   })
 
-  it('deshabilita escrituras visibles para rol Consulta', async () => {
+  it('deshabilita escrituras visibles para IPS Cliente', async () => {
     seedAdministrationMocks()
     const user = userEvent.setup()
     render(<AdministrationPage />)

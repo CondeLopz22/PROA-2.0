@@ -1,10 +1,36 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
-import { ActiveMatrix, OperationalKanban } from './DashboardPage'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ActiveMatrix, DashboardPage, OperationalKanban } from './DashboardPage'
 import type { ActiveCaseRow } from '../services/operationalService'
+
+const mocks = vi.hoisted(() => ({
+  userType: 'ips_cliente',
+  getActiveCasesCockpit: vi.fn(),
+}))
+
+vi.mock('../features/ips/ipsContext', () => ({
+  useIps: () => ({
+    status: 'ready',
+    allowedIps: [{ id: 'ips-1', nombre: 'GESTION SALUD', estado: 'Activa' }],
+    activeIps: { id: 'ips-1', nombre: 'GESTION SALUD', estado: 'Activa' },
+    profile: null,
+    activeMembership: null,
+    userType: mocks.userType,
+    error: null,
+    setActiveIps: vi.fn(),
+  }),
+}))
+
+vi.mock('../services/operationalService', async () => {
+  const actual = await vi.importActual<typeof import('../services/operationalService')>('../services/operationalService')
+  return {
+    ...actual,
+    getActiveCasesCockpit: mocks.getActiveCasesCockpit,
+  }
+})
 
 const baseRow: ActiveCaseRow = {
   case: {
@@ -97,6 +123,12 @@ const baseRow: ActiveCaseRow = {
 }
 
 describe('Dashboard responsive views', () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    mocks.userType = 'ips_cliente'
+  })
+
   it('renderiza tabla desktop y card clínica para la matriz operacional', () => {
     render(
       <MemoryRouter>
@@ -129,5 +161,20 @@ describe('Dashboard responsive views', () => {
       </MemoryRouter>,
     )
     expect(screen.getByRole('heading', { name: 'Microbiología pendiente/relevante' }).closest('.kanban-column')).toHaveClass('mobile-selected')
+  })
+
+  it('oculta nueva valoración para IPS Cliente en el cockpit', async () => {
+    mocks.userType = 'ips_cliente'
+    mocks.getActiveCasesCockpit.mockResolvedValue([baseRow])
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(mocks.getActiveCasesCockpit).toHaveBeenCalledWith('ips-1'))
+    expect(screen.queryByRole('link', { name: /Nueva valoración/i })).not.toBeInTheDocument()
+    expect(screen.getAllByText(/VALIDACION-6C2/).length).toBeGreaterThan(0)
   })
 })

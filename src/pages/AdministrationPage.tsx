@@ -42,6 +42,7 @@ import {
 } from '../services/administrationService'
 import { catalogLabel } from '../services/catalogService'
 import { patientDisplayName } from '../services/patientService'
+import { productRoleLabels, productRoleValues, type ProductRoleValue } from '../services/permissionService'
 import { readableError } from '../services/supabaseErrors'
 import type { Ips, OmsDdd, ServiceIps, UUID } from '../types/domain'
 
@@ -56,7 +57,7 @@ type AdminSection =
   | 'ddd'
   | 'audit'
 
-const roles = ['Administrador IPS', 'PROA', 'Consulta'] as const
+const roles = productRoleValues
 
 const sectionCards: Array<{
   id: AdminSection
@@ -66,9 +67,9 @@ const sectionCards: Array<{
   countKey?: keyof AdminSummary
 }> = [
   { id: 'institution', title: 'Institución', description: 'Datos visibles de la IPS activa.', icon: Building2 },
-  { id: 'users', title: 'Usuarios y accesos', description: 'Asignaciones por IPS, rol y estado.', icon: Users, countKey: 'users' },
+  { id: 'users', title: 'Usuarios y accesos', description: 'Asignaciones por IPS, tipo de usuario y estado.', icon: Users, countKey: 'users' },
   { id: 'services', title: 'Servicios', description: 'Servicios activos e inactivos de la IPS.', icon: Stethoscope, countKey: 'services' },
-  { id: 'antimicrobials', title: 'Antimicrobianos', description: 'Catálogo global y disponibilidad futura por IPS.', icon: Beaker, countKey: 'antimicrobials' },
+  { id: 'antimicrobials', title: 'Antimicrobianos', description: 'Catálogo maestro global.', icon: Beaker, countKey: 'antimicrobials' },
   { id: 'microbiology', title: 'Microbiología', description: 'Microorganismos y tipos de muestra.', icon: Microscope, countKey: 'microorganisms' },
   { id: 'proa', title: 'Configuración PROA', description: 'Intervenciones y categorías analíticas.', icon: ClipboardCheck, countKey: 'interventions' },
   { id: 'ddd', title: 'DDD / OMS', description: 'Referencia OMS DDD y vías.', icon: Database, countKey: 'omsDdd' },
@@ -180,17 +181,13 @@ export function AdministrationPage() {
 }
 
 function PermissionBanner({ context }: { context: AdminContext | null }) {
-  const label = context?.profile?.es_admin_global
-    ? 'Admin global'
-    : context?.membership?.rol ?? 'Sin rol administrativo visible'
+  const label = productRoleLabels[context?.capability ?? 'sin_acceso']
   return (
     <section className="panel admin-permission-banner">
       <KeyRound size={19} />
       <div>
         <h2>{label}</h2>
-        <p className="muted">
-          La UI oculta acciones sensibles según rol visible; RLS sigue siendo la fuente de seguridad real.
-        </p>
+        <p className="muted">Permisos aplicados para la IPS activa. La seguridad final se valida en Supabase.</p>
       </div>
       <span className="pill">{context?.membership?.estado ?? context?.profile?.estado ?? 'Sin acceso IPS'}</span>
     </section>
@@ -220,7 +217,7 @@ function AdminOverview({
               </div>
             </div>
             <strong>{count === null ? 'Disponible' : count}</strong>
-            <span className="muted">{card.id === 'audit' ? 'Hallazgos por revisar' : 'Registros visibles por RLS'}</span>
+            <span className="muted">{card.id === 'audit' ? 'Hallazgos por revisar' : 'Registros disponibles'}</span>
             <button className="secondary-button" onClick={() => onOpen(card.id)} type="button">Administrar</button>
           </article>
         )
@@ -228,7 +225,7 @@ function AdminOverview({
       {!canWrite(context) ? (
         <article className="panel admin-note">
           <h2>Modo consulta</h2>
-          <p className="muted">Tu rol visible no habilita cambios de parametrización desde la interfaz.</p>
+          <p className="muted">Solo el perfil Administrador puede modificar parametrización.</p>
         </article>
       ) : null}
     </section>
@@ -277,7 +274,7 @@ function InstitutionPanel({
         <Building2 size={20} />
         <div>
           <h2>Institución</h2>
-          <p>Campos reales de `ips`; identificadores críticos quedan solo lectura.</p>
+          <p>Datos institucionales disponibles; identificadores críticos quedan solo lectura.</p>
         </div>
       </div>
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
@@ -312,7 +309,7 @@ function UsersPanel({
 }) {
   const [rows, setRows] = useState<AdminAccessRow[]>([])
   const [usuarioId, setUsuarioId] = useState('')
-  const [rol, setRol] = useState<(typeof roles)[number]>('PROA')
+  const [rol, setRol] = useState<ProductRoleValue>('Usuario INFECTOMAG')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const canManage = Boolean(context?.canManageUsers)
@@ -348,7 +345,7 @@ function UsersPanel({
     }
   }
 
-  async function update(row: AdminAccessRow, updates: { rol?: (typeof roles)[number]; estado?: 'Activo' | 'Inactivo' }) {
+  async function update(row: AdminAccessRow, updates: { rol?: ProductRoleValue; estado?: 'Activo' | 'Inactivo' }) {
     if (!canManage) return
     const sensitive = updates.estado === 'Inactivo' ? '¿Retirar/desactivar acceso de este usuario a la IPS?' : '¿Actualizar acceso del usuario?'
     if (!window.confirm(sensitive)) return
@@ -372,7 +369,7 @@ function UsersPanel({
         <Users size={20} />
         <div>
           <h2>Usuarios y accesos</h2>
-          <p>Correo no se consulta desde Auth en frontend para no usar service role.</p>
+          <p>Correo e invitación de usuarios requieren backend seguro; aquí se administran asignaciones existentes.</p>
         </div>
       </div>
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
@@ -383,7 +380,7 @@ function UsersPanel({
         </label>
         <label>
           Rol
-          <select disabled={!canManage || saving} value={rol} onChange={(event) => setRol(event.target.value as (typeof roles)[number])}>
+          <select disabled={!canManage || saving} value={rol} onChange={(event) => setRol(event.target.value as ProductRoleValue)}>
             {roles.map((item) => <option key={item}>{item}</option>)}
           </select>
         </label>
@@ -401,7 +398,7 @@ function AdminAccessTable({
   saving,
 }: {
   canManage: boolean
-  onUpdate: (row: AdminAccessRow, updates: { rol?: (typeof roles)[number]; estado?: 'Activo' | 'Inactivo' }) => void
+  onUpdate: (row: AdminAccessRow, updates: { rol?: ProductRoleValue; estado?: 'Activo' | 'Inactivo' }) => void
   rows: AdminAccessRow[]
   saving: boolean
 }) {
@@ -426,7 +423,7 @@ function AdminAccessTable({
                 <td>{row.profile?.nombre ?? 'Perfil sin nombre'}</td>
                 <td>{row.email ?? 'No disponible desde cliente'}</td>
                 <td>
-                  <select disabled={!canManage || saving} value={row.membership.rol ?? 'PROA'} onChange={(event) => onUpdate(row, { rol: event.target.value as (typeof roles)[number] })}>
+                  <select disabled={!canManage || saving} value={roleValue(row.membership.rol)} onChange={(event) => onUpdate(row, { rol: event.target.value as ProductRoleValue })}>
                     {roles.map((item) => <option key={item}>{item}</option>)}
                   </select>
                 </td>
@@ -454,7 +451,7 @@ function AdminAccessTable({
               <strong>{row.profile?.nombre ?? 'Perfil sin nombre'}</strong>
               <span className="pill">{row.membership.estado ?? 'Sin estado'}</span>
             </div>
-            <span>{row.membership.rol ?? 'Sin rol'}</span>
+            <span>{roleValue(row.membership.rol)}</span>
             <span>{row.email ?? 'Correo no disponible desde cliente'}</span>
             <span>{row.membership.usuario_id}</span>
           </article>
@@ -617,7 +614,7 @@ function CatalogPanel({ context, kind, title }: { context: AdminContext | null; 
         <FlaskConical size={20} />
         <div>
           <h2>{title}</h2>
-          <p>{canManage ? 'Catálogo global administrable según RLS.' : 'Catálogo global en modo consulta para esta sesión.'}</p>
+          <p>{canManage ? 'Catálogo maestro global administrable.' : 'Catálogo maestro en modo consulta para esta sesión.'}</p>
         </div>
       </div>
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
@@ -668,7 +665,7 @@ function DddOmsPanel({ context }: { context: AdminContext | null }) {
         <Database size={20} />
         <div>
           <h2>DDD / OMS</h2>
-          <p>{context?.canManageOmsDdd ? 'Referencia sensible. Edición sujeta a RLS.' : 'Referencia OMS en modo consulta para esta sesión.'}</p>
+          <p>{context?.canManageOmsDdd ? 'Referencia sensible administrable por Administrador.' : 'Referencia OMS en modo consulta para esta sesión.'}</p>
         </div>
       </div>
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
@@ -808,4 +805,11 @@ function Readonly({ label, value }: { label: string; value?: string | null }) {
       <input disabled value={value ?? 'Sin registro'} />
     </label>
   )
+}
+
+function roleValue(value?: string | null): ProductRoleValue {
+  if (value === 'Administrador' || value === 'Administrador IPS') return 'Administrador'
+  if (value === 'Usuario INFECTOMAG' || value === 'PROA') return 'Usuario INFECTOMAG'
+  if (value === 'IPS Cliente' || value === 'Consulta') return 'IPS Cliente'
+  return 'IPS Cliente'
 }

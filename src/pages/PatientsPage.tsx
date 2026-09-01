@@ -8,11 +8,13 @@ import { getPatientDirectory, type PatientDirectoryRow } from '../services/opera
 import { patientDisplayName } from '../services/patientService'
 import { treatmentName } from '../services/treatmentService'
 import { readableError } from '../services/supabaseErrors'
+import { canWriteOperationalData } from '../services/permissionService'
 
 const filters = ['Todos', 'Activos', 'Cerrados'] as const
 
 export function PatientsPage() {
-  const { activeIps } = useIps()
+  const { activeIps, userType } = useIps()
+  const canWrite = canWriteOperationalData(userType)
   const [params] = useSearchParams()
   const initialFilter = filters.includes(params.get('estado') as (typeof filters)[number]) ? (params.get('estado') as (typeof filters)[number]) : 'Todos'
   const [filter, setFilter] = useState<(typeof filters)[number]>(initialFilter)
@@ -56,13 +58,15 @@ export function PatientsPage() {
           <h1>Pacientes Registrados</h1>
           <p className="muted">Pacientes y casos visibles para la IPS activa. La búsqueda filtra, no bloquea la vista inicial.</p>
         </div>
-        <button className="secondary-button" onClick={() => setShowLookup((value) => !value)} type="button">
-          <Search size={17} />
-          {showLookup ? 'Ocultar búsqueda avanzada' : 'Buscar / crear paciente'}
-        </button>
+        {canWrite ? (
+          <button className="secondary-button" onClick={() => setShowLookup((value) => !value)} type="button">
+            <Search size={17} />
+            {showLookup ? 'Ocultar búsqueda avanzada' : 'Buscar / crear paciente'}
+          </button>
+        ) : null}
       </section>
 
-      {showLookup ? (
+      {showLookup && canWrite ? (
         <section className="panel">
           <PatientWorkflow mode="records" />
         </section>
@@ -130,7 +134,7 @@ export function PatientsPage() {
                       <td>{row.roundCount}</td>
                       <td>{formatDate(row.latestCase?.fecha_apertura)}</td>
                       <td>{formatDate(row.latestCase?.fecha_cierre)}</td>
-                      <td><Link className="table-action" to={`/rondas?new=1`}>{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link></td>
+                      <td>{canWrite ? <Link className="table-action" to={`/rondas?new=1`}>{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link> : <span className="muted">Solo lectura</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -148,7 +152,11 @@ export function PatientsPage() {
                   <span>{row.activeTreatments.length ? row.activeTreatments.map(treatmentName).join(', ') : 'Sin antimicrobianos activos'}</span>
                   <span>Última ronda: {formatDateTime(row.latestRound?.fecha_hora_ronda)} · Rondas: {row.roundCount}</span>
                   <span>Apertura: {formatDate(row.latestCase?.fecha_apertura)} · Cierre: {formatDate(row.latestCase?.fecha_cierre)}</span>
-                  <Link className="primary-button mobile-card-action" to="/rondas?new=1">{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link>
+                  {canWrite ? (
+                    <Link className="primary-button mobile-card-action" to="/rondas?new=1">{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link>
+                  ) : (
+                    <span className="pill mobile-card-action">Solo lectura</span>
+                  )}
                 </article>
               ))}
             </div>

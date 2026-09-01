@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
+import { canAccessAdministration } from '../services/permissionService'
 
 const navigation = [
   { to: '/', label: 'Inicio', icon: Home },
@@ -16,8 +17,9 @@ const navigation = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { signOut, user } = useAuth()
-  const { allowedIps, activeIps, error, setActiveIps, status } = useIps()
+  const { allowedIps, activeIps, error, setActiveIps, status, userType } = useIps()
   const [open, setOpen] = useState(false)
+  const visibleNavigation = navigation.filter((item) => item.to !== '/administracion' || canAccessAdministration(userType))
 
   useEffect(() => {
     if (!open) return
@@ -48,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <nav className="nav-list" aria-label="Principal">
-          {navigation.map((item) => (
+          {visibleNavigation.map((item) => (
             <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)}>
               <item.icon size={18} />
               {item.label}
@@ -105,7 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <p>
                 {status === 'no_profile'
                   ? 'Tu usuario autenticado no tiene fila visible en perfiles_usuario.'
-                  : 'Tu usuario no tiene IPS activas visibles por RLS o por la tabla usuario_ips.'}
+                  : 'Tu usuario no tiene IPS activas asignadas.'}
               </p>
             </section>
           </main>

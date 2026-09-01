@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { normalizeProductUserType, productRoleValueFor, type ProductRoleValue } from './permissionService'
 import type {
   AntimicrobialCatalogItem,
   CatalogItem,
@@ -13,7 +14,7 @@ import type {
   UUID,
 } from '../types/domain'
 
-export type AdminCapability = 'global_admin' | 'ips_admin' | 'proa' | 'consulta'
+export type AdminCapability = 'administrador' | 'infectomag' | 'ips_cliente' | 'sin_acceso'
 export type AdminCatalogKind = 'antimicrobials' | 'sampleTypes' | 'microorganisms' | 'interventions' | 'categories'
 
 export type AdminContext = {
@@ -62,15 +63,8 @@ function normalize(value?: string | null) {
   return (value ?? '').trim().toLocaleLowerCase('es-CO').replace(/\s+/g, ' ')
 }
 
-function capabilityFrom(profile: UserProfile | null, membership: UserIpsMembership | null): AdminCapability {
-  if (profile?.es_admin_global) return 'global_admin'
-  if (membership?.rol === 'Administrador IPS') return 'ips_admin'
-  if (membership?.rol === 'Consulta') return 'consulta'
-  return 'proa'
-}
-
 function canWrite(context: Pick<AdminContext, 'capability'>) {
-  return context.capability === 'global_admin' || context.capability === 'ips_admin'
+  return context.capability === 'administrador'
 }
 
 export async function getAdminContext(userId: UUID, ipsId: UUID): Promise<AdminContext> {
@@ -92,7 +86,7 @@ export async function getAdminContext(userId: UUID, ipsId: UUID): Promise<AdminC
 
   const profile = (profileResult.data as UserProfile | null) ?? null
   const membership = (membershipResult.data as UserIpsMembership | null) ?? null
-  const capability = capabilityFrom(profile, membership)
+  const capability = normalizeProductUserType(profile, membership)
   const writable = canWrite({ capability })
   return {
     profile,
@@ -101,8 +95,8 @@ export async function getAdminContext(userId: UUID, ipsId: UUID): Promise<AdminC
     canManageInstitution: writable,
     canManageUsers: writable,
     canManageServices: writable,
-    canManageCatalogs: capability === 'global_admin',
-    canManageOmsDdd: capability === 'global_admin',
+    canManageCatalogs: writable,
+    canManageOmsDdd: writable,
   }
 }
 
@@ -185,7 +179,7 @@ export async function getAdminAccessRows(ipsId: UUID): Promise<AdminAccessRow[]>
 export async function assignUserToIps(input: {
   usuarioId: UUID
   ipsId: UUID
-  rol: 'Administrador IPS' | 'PROA' | 'Consulta'
+  rol: ProductRoleValue
 }) {
   const existing = await supabase
     .from('usuario_ips')
@@ -216,7 +210,7 @@ export async function assignUserToIps(input: {
 export async function updateUserIpsAccess(input: {
   usuarioId: UUID
   ipsId: UUID
-  rol?: 'Administrador IPS' | 'PROA' | 'Consulta'
+  rol?: ProductRoleValue
   estado?: 'Activo' | 'Inactivo'
 }) {
   const updates: Record<string, string> = {}
@@ -225,6 +219,24 @@ export async function updateUserIpsAccess(input: {
   const { data, error } = await supabase
     .from('usuario_ips')
     .update(updates)
+    .eq('usuario_id', input.usuarioId)
+    .eq('ips_id', input.ipsId)
+    .select('usuario_id,ips_id,rol,estado,fecha_asignacion')
+    .single()
+  if (error) throw error
+  return data as UserIpsMembership
+}
+
+export async function updateCurrentUserRoleAttempt(input: {
+  usuarioId: UUID
+  ipsId: UUID
+  targetCapability: AdminCapability
+}) {
+  const nextRole = productRoleValueFor(input.targetCapability)
+  if (!nextRole) throw new Error('Tipo de usuario inválido.')
+  const { data, error } = await supabase
+    .from('usuario_ips')
+    .update({ rol: nextRole })
     .eq('usuario_id', input.usuarioId)
     .eq('ips_id', input.ipsId)
     .select('usuario_id,ips_id,rol,estado,fecha_asignacion')

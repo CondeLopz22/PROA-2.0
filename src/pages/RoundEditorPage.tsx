@@ -60,6 +60,7 @@ import {
 import { confirmRoundWithNote, generateProaNote, getLatestRoundNote, saveRoundNoteDraft } from '../services/noteService'
 import { patientDisplayName } from '../services/patientService'
 import { readableError } from '../services/supabaseErrors'
+import { canWriteOperationalData } from '../services/permissionService'
 import {
   continueTreatment,
   createTreatment,
@@ -169,7 +170,7 @@ export function RoundEditorPage() {
   const { roundId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { activeIps } = useIps()
+  const { activeIps, userType } = useIps()
   const [bundle, setBundle] = useState<RoundClinicalBundle | null>(null)
   const [services, setServices] = useState<ServiceIps[]>([])
   const [categories, setCategories] = useState<CatalogItem[]>([])
@@ -205,7 +206,7 @@ export function RoundEditorPage() {
   const roundDateForCalculations = fromDateTimeLocal(fechaRonda) ?? bundle?.round.fecha_hora_ronda
   const casoId = bundle?.round.caso_id ?? bundle?.caseProa.id
   const age = ageFromBirthDate(bundle?.patient.fecha_nacimiento)
-  const readOnly = bundle?.round.estado === 'Confirmada'
+  const readOnly = !canWriteOperationalData(userType) || bundle?.round.estado === 'Confirmada'
   const activeTreatments = useMemo(
     () =>
       (bundle?.treatments ?? []).filter(

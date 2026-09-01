@@ -109,7 +109,7 @@ function IndicatorSection({
         <BarChart3 size={20} />
         <div>
           <h2>{title}</h2>
-          <p>Datos reales visibles por RLS.</p>
+          <p>Datos reales disponibles para la IPS activa.</p>
         </div>
       </div>
       <div className="metrics-grid compact-metrics">

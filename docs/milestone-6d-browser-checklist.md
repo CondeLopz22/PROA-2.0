@@ -17,8 +17,8 @@
 ## Usuarios y accesos
 
 - [ ] Lista usuarios/asignaciones visibles por IPS.
-- [ ] Rol `Consulta` ve acciones deshabilitadas.
-- [ ] Admin IPS puede cambiar rol/estado solo si RLS lo permite.
+- [ ] `IPS Cliente` ve acciones de escritura ocultas o deshabilitadas.
+- [ ] `Administrador` puede cambiar rol/estado solo si RLS lo permite.
 - [ ] Retirar/desactivar acceso pide confirmación.
 - [ ] No se expone correo desde Auth cuando no está disponible de forma segura.
 
@@ -40,7 +40,7 @@
 ## DDD / OMS
 
 - [ ] Lista antimicrobiano, ATC, vía, DDD y fuente.
-- [ ] No permite edición accidental para Admin IPS/PROA/Consulta.
+- [ ] No permite edición accidental para `Usuario INFECTOMAG` ni `IPS Cliente`.
 
 ## Auditoría de datos
 
@@ -58,7 +58,6 @@
 
 - [ ] Usuario GESTION SALUD no administra HUJMB.
 - [ ] Usuario HUJMB no administra GESTION SALUD.
-- [ ] Consulta no puede escribir aunque manipule la UI.
-- [ ] PROA no modifica configuración sensible.
-- [ ] Admin IPS no se eleva a Admin Global.
-
+- [ ] `IPS Cliente` no puede escribir aunque manipule la UI.
+- [ ] `Usuario INFECTOMAG` no modifica configuración sensible.
+- [ ] Usuarios no administradores no pueden elevarse a `Administrador`.

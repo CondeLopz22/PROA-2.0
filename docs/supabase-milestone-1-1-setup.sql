@@ -23,7 +23,7 @@ set nombre = excluded.nombre,
 
 -- 4) Asignar IPS A al usuario. Reemplaza <ips_a_id>.
 insert into public.usuario_ips (usuario_id, ips_id, rol, estado)
-values ('<auth_user_id>', '<ips_a_id>', 'PROA', 'Activo')
+values ('<auth_user_id>', '<ips_a_id>', 'Usuario INFECTOMAG', 'Activo')
 on conflict do nothing;
 
 -- 5) Verificar membresías.

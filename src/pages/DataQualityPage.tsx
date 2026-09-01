@@ -64,7 +64,7 @@ export function DataQualityPage() {
         <div>
           <p className="eyebrow">Calidad de datos</p>
           <h1>Calidad de Datos</h1>
-          <p className="muted">Revisión básica de inconsistencias visibles por RLS para la IPS activa.</p>
+          <p className="muted">Revisión básica de inconsistencias disponibles para la IPS activa.</p>
         </div>
         <button className="secondary-button" disabled={loading} onClick={load} type="button">
           <RefreshCw size={17} />
@@ -170,7 +170,7 @@ export function DataQualityPage() {
           <div className="subsection-heading">
             <div>
               <h2>{details.issue.label}</h2>
-              <p className="muted">Registros responsables visibles por RLS para auditoría y corrección.</p>
+              <p className="muted">Registros responsables disponibles para auditoría y corrección.</p>
             </div>
             <button className="secondary-button" onClick={() => setDetails(null)} type="button">Cerrar</button>
           </div>

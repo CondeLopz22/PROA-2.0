@@ -20,10 +20,12 @@ export type UserProfile = {
 export type UserIpsMembership = {
   usuario_id: UUID
   ips_id: UUID
-  rol?: 'Administrador IPS' | 'PROA' | 'Consulta' | string | null
+  rol?: 'Administrador' | 'Usuario INFECTOMAG' | 'IPS Cliente' | 'Administrador IPS' | 'PROA' | 'Consulta' | string | null
   estado?: 'Activo' | 'Inactivo' | string | null
   fecha_asignacion?: string | null
 }
+
+export type ProductUserType = 'administrador' | 'infectomag' | 'ips_cliente' | 'sin_acceso'
 
 export type Patient = {
   id: UUID

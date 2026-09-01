@@ -14,6 +14,7 @@ import {
 } from '../../services/patientService'
 import { createEmptyRound } from '../../services/roundService'
 import { readableError } from '../../services/supabaseErrors'
+import { canWriteOperationalData } from '../../services/permissionService'
 import type { CaseProa, Patient, PatientLookupResult, RoundProa, ServiceIps } from '../../types/domain'
 
 type Mode = 'round' | 'records'
@@ -21,8 +22,9 @@ type Mode = 'round' | 'records'
 const identificationTypes = ['CC', 'TI', 'RC', 'CE', 'PA', 'MS', 'AS']
 
 export function PatientWorkflow({ mode }: { mode: Mode }) {
-  const { activeIps, status: ipsStatus } = useIps()
+  const { activeIps, status: ipsStatus, userType } = useIps()
   const { user } = useAuth()
+  const canWrite = canWriteOperationalData(userType)
   const navigate = useNavigate()
   const [tipo, setTipo] = useState('CC')
   const [numero, setNumero] = useState('')
@@ -105,13 +107,18 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
         {error ? <div className="alert error">{error}</div> : null}
       </article>
 
-      {notFound && activeIps ? (
+      {notFound && activeIps && canWrite ? (
         <CreatePatientCard
           ipsId={activeIps.id}
           numero={numero}
           tipo={tipo}
           onCreated={handlePatientCreated}
         />
+      ) : null}
+      {notFound && activeIps && !canWrite ? (
+        <article className="panel">
+          <div className="alert info">Paciente no encontrado. Tu perfil es de solo lectura y no permite crear nuevos registros.</div>
+        </article>
       ) : null}
 
       {lookup && activeIps && user ? (
@@ -126,6 +133,7 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
             setCreatedRound(round)
             if (mode === 'round') navigate(`/rondas/${round.id}`)
           }}
+          canWrite={canWrite}
         />
       ) : null}
 
@@ -234,6 +242,7 @@ function PatientSummary({
   userId,
   onCaseCreated,
   onRoundCreated,
+  canWrite,
 }: {
   lookup: PatientLookupResult
   mode: Mode
@@ -241,6 +250,7 @@ function PatientSummary({
   userId: string
   onCaseCreated: (caso: CaseProa) => void
   onRoundCreated: (round: RoundProa) => void
+  canWrite: boolean
 }) {
   const [selectedCaseId, setSelectedCaseId] = useState(lookup.activeCase?.id ?? '')
   const [services, setServices] = useState<ServiceIps[]>([])
@@ -375,7 +385,7 @@ function PatientSummary({
         )}
       </div>
 
-      {mode === 'round' ? (
+      {mode === 'round' && canWrite ? (
         <div className="round-actions">
           <div className="form-grid compact">
             <label>
@@ -416,6 +426,9 @@ function PatientSummary({
             </button>
           </div>
         </div>
+      ) : null}
+      {mode === 'round' && !canWrite ? (
+        <div className="alert info">Tu perfil permite consultar este paciente, pero no crear casos ni rondas.</div>
       ) : null}
 
       {lookup.historicalCases.length ? (

@@ -26,6 +26,7 @@ import {
 } from '../services/dddService'
 import { getIpsServices } from '../services/ipsService'
 import { readableError } from '../services/supabaseErrors'
+import { canWriteOperationalData } from '../services/permissionService'
 import type { AntimicrobialCatalogItem, DddConsumption, DddRecord, ServiceIps } from '../types/domain'
 
 const routes = ['IV', 'VO', 'IM', 'SC', 'Inhalada', 'Tópica'] as const
@@ -39,7 +40,8 @@ function numberLabel(value?: string | number | null, digits = 2) {
 
 export function AntimicrobialUsePage() {
   const { user } = useAuth()
-  const { activeIps } = useIps()
+  const { activeIps, userType } = useIps()
+  const canWrite = canWriteOperationalData(userType)
   const [periodMonth, setPeriodMonth] = useState(new Date().toISOString().slice(0, 7))
   const [serviceId, setServiceId] = useState('')
   const [services, setServices] = useState<ServiceIps[]>([])
@@ -55,7 +57,7 @@ export function AntimicrobialUsePage() {
   const [success, setSuccess] = useState<string | null>(null)
 
   const period = monthStart(periodMonth)
-  const readOnly = record?.estado === 'Confirmado' || record?.estado === 'Anulado'
+  const readOnly = !canWrite || record?.estado === 'Confirmado' || record?.estado === 'Anulado'
   const periodDays = daysInMonth(period)
   const qualityAlerts = useMemo(() => {
     const alerts = new Set<string>()
@@ -103,6 +105,10 @@ export function AntimicrobialUsePage() {
 
   async function openSelectedRecord() {
     if (!activeIps || !user || !serviceId) return
+    if (!canWrite) {
+      setError('Tu perfil permite consultar DDD, pero no abrir ni crear registros.')
+      return
+    }
     setSaving(true)
     setError(null)
     setSuccess(null)
@@ -256,7 +262,7 @@ export function AntimicrobialUsePage() {
             <SummaryItem label="Días del periodo" value={String(periodDays)} />
           </div>
           <div className="button-row">
-            <button className="primary-button" disabled={!activeIps || !serviceId || saving} onClick={openSelectedRecord} type="button">
+            <button className="primary-button" disabled={!activeIps || !serviceId || saving || !canWrite} onClick={openSelectedRecord} type="button">
               Abrir registro
             </button>
             {record ? <span className="pill">{record.estado ?? 'Borrador'} · {formatDate(record.periodo)}</span> : null}

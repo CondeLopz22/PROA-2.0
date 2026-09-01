@@ -7,11 +7,13 @@ import { formatDateTime } from '../lib/date'
 import { getRoundsActivity, matchesRoundContext, matchesRoundSearch, type RoundsActivityRow } from '../services/operationalService'
 import { patientDisplayName } from '../services/patientService'
 import { readableError } from '../services/supabaseErrors'
+import { canWriteOperationalData } from '../services/permissionService'
 
 const filters = ['Pendientes', 'Hoy', 'Borradores', 'Confirmadas', 'Todas'] as const
 
 export function RoundsPage() {
-  const { activeIps } = useIps()
+  const { activeIps, userType } = useIps()
+  const canWrite = canWriteOperationalData(userType)
   const [params, setParams] = useSearchParams()
   const initialFilter = filters.includes(params.get('filtro') as (typeof filters)[number]) ? (params.get('filtro') as (typeof filters)[number]) : 'Pendientes'
   const [filter, setFilter] = useState<(typeof filters)[number]>(initialFilter)
@@ -60,18 +62,23 @@ export function RoundsPage() {
             <RefreshCw size={17} />
             Actualizar
           </button>
-          <button className="primary-button" onClick={() => setParams({ new: creating ? '0' : '1' })} type="button">
-            <Plus size={17} />
-            {creating ? 'Ocultar nueva ronda' : 'Nueva ronda'}
-          </button>
+          {canWrite ? (
+            <button className="primary-button" onClick={() => setParams({ new: creating ? '0' : '1' })} type="button">
+              <Plus size={17} />
+              {creating ? 'Ocultar nueva ronda' : 'Nueva ronda'}
+            </button>
+          ) : null}
         </div>
       </section>
 
-      {creating ? (
+      {creating && canWrite ? (
         <section className="panel">
           <h2>Nueva valoración</h2>
           <PatientWorkflow mode="round" />
         </section>
+      ) : null}
+      {creating && !canWrite ? (
+        <div className="alert info">Tu perfil permite consultar rondas, pero no crear nuevas valoraciones.</div>
       ) : null}
 
       {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}

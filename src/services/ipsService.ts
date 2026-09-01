@@ -20,6 +20,17 @@ export async function getAllowedIps(userId: UUID) {
     .filter((ips): ips is Ips => Boolean(ips) && (ips as Ips).estado === 'Activa')
 }
 
+export async function getAllActiveIps() {
+  const { data, error } = await supabase
+    .from('ips')
+    .select('id,nombre,nit,codigo_reps,estado,fecha_creacion')
+    .eq('estado', 'Activa')
+    .order('nombre')
+
+  if (error) throw error
+  return (data ?? []) as Ips[]
+}
+
 export async function getIpsServices(ipsId: UUID) {
   const { data, error } = await supabase
     .from('servicios_ips')
