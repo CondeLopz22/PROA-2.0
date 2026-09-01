@@ -5,8 +5,10 @@
 - [ ] Ve `Administracion` en el sidebar.
 - [ ] Puede abrir `/administracion`.
 - [ ] Puede ver Institucion, Usuarios y accesos, Servicios, Catalogos, DDD/OMS y Auditoria.
-- [ ] Puede crear/activar/desactivar servicios si RLS lo permite.
-- [ ] Puede cambiar rol/estado de una asignacion existente si RLS lo permite.
+- [ ] Puede crear/activar/desactivar servicios.
+- [ ] Puede cambiar rol/estado de una asignacion existente.
+- [ ] No existe opcion para asignar rol `Administrador` en `usuario_ips`.
+- [ ] La administracion depende de `perfiles_usuario.es_admin_global = true`.
 - [ ] No usa credenciales `service_role` en frontend.
 
 ## Usuario INFECTOMAG
@@ -16,6 +18,7 @@
 - [ ] Puede buscar pacientes y crear rondas en IPS asignada.
 - [ ] Puede registrar tratamientos, microbiologia, intervencion, nota y DDD.
 - [ ] No puede modificar servicios ni catalogos administrativos.
+- [ ] Un intento directo de modificar `perfiles_usuario.es_admin_global` es rechazado por RLS.
 
 ## IPS Cliente
 
@@ -24,4 +27,5 @@
 - [ ] Ve Cockpit, Rondas, Pacientes, DDD, Calidad e Indicadores de su IPS.
 - [ ] No ve botones de crear, guardar, confirmar o editar.
 - [ ] Intentos directos de escritura son rechazados por RLS.
+- [ ] Insertar paciente, actualizar ronda e insertar DDD son rechazados por RLS.
 - [ ] No ve informacion de otra IPS.

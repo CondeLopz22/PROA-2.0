@@ -152,10 +152,36 @@ function seedAdministrationMocks() {
   ])
 }
 
+function resetContext() {
+  mocks.context = {
+    profile: {
+      usuario_id: 'user-1',
+      nombre: 'Cliente IPS',
+      estado: 'Activo',
+      es_admin_global: false,
+      fecha_creacion: '2026-08-01T00:00:00Z',
+    },
+    membership: {
+      usuario_id: 'user-1',
+      ips_id: 'ips-1',
+      rol: 'IPS Cliente',
+      estado: 'Activo',
+      fecha_asignacion: '2026-08-01T00:00:00Z',
+    },
+    capability: 'ips_cliente',
+    canManageInstitution: false,
+    canManageUsers: false,
+    canManageServices: false,
+    canManageCatalogs: false,
+    canManageOmsDdd: false,
+  }
+}
+
 describe('AdministrationPage', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    resetContext()
   })
 
   function nav() {
@@ -181,6 +207,32 @@ describe('AdministrationPage', () => {
     await user.click(nav().getByRole('button', { name: /Usuarios y accesos/i }))
     expect(await screen.findByLabelText('Usuario existente ID')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Asignar' })).toBeDisabled()
+  })
+
+  it('no ofrece Administrador como rol institucional asignable', async () => {
+    seedAdministrationMocks()
+    mocks.context = {
+      ...mocks.context,
+      profile: { ...mocks.context.profile, es_admin_global: true },
+      capability: 'administrador',
+      canManageInstitution: true,
+      canManageUsers: true,
+      canManageServices: true,
+      canManageCatalogs: true,
+      canManageOmsDdd: true,
+    }
+    const user = userEvent.setup()
+    render(<AdministrationPage />)
+
+    await screen.findByRole('heading', { name: 'Parametrización Multi-IPS' })
+    await user.click(nav().getByRole('button', { name: /Usuarios y accesos/i }))
+    const roleSelects = await screen.findAllByRole('combobox')
+    const assignRoleSelect = roleSelects.find((select) => within(select).queryByRole('option', { name: 'Usuario INFECTOMAG' }))
+
+    expect(assignRoleSelect).toBeTruthy()
+    expect(within(assignRoleSelect as HTMLElement).queryByRole('option', { name: 'Administrador' })).not.toBeInTheDocument()
+    expect(within(assignRoleSelect as HTMLElement).getByRole('option', { name: 'Usuario INFECTOMAG' })).toBeInTheDocument()
+    expect(within(assignRoleSelect as HTMLElement).getByRole('option', { name: 'IPS Cliente' })).toBeInTheDocument()
   })
 
   it('muestra servicios activos e inactivos sin borrado físico', async () => {

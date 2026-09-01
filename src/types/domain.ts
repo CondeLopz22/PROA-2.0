@@ -20,7 +20,7 @@ export type UserProfile = {
 export type UserIpsMembership = {
   usuario_id: UUID
   ips_id: UUID
-  rol?: 'Administrador' | 'Usuario INFECTOMAG' | 'IPS Cliente' | 'Administrador IPS' | 'PROA' | 'Consulta' | string | null
+  rol?: 'Usuario INFECTOMAG' | 'IPS Cliente' | 'Administrador IPS' | 'PROA' | 'Consulta' | string | null
   estado?: 'Activo' | 'Inactivo' | string | null
   fecha_asignacion?: string | null
 }

@@ -808,8 +808,7 @@ function Readonly({ label, value }: { label: string; value?: string | null }) {
 }
 
 function roleValue(value?: string | null): ProductRoleValue {
-  if (value === 'Administrador' || value === 'Administrador IPS') return 'Administrador'
-  if (value === 'Usuario INFECTOMAG' || value === 'PROA') return 'Usuario INFECTOMAG'
+  if (value === 'Usuario INFECTOMAG' || value === 'PROA' || value === 'Administrador IPS') return 'Usuario INFECTOMAG'
   if (value === 'IPS Cliente' || value === 'Consulta') return 'IPS Cliente'
   return 'IPS Cliente'
 }

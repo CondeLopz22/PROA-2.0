@@ -36,8 +36,7 @@ function client() {
 
 function normalizeUserType(profile, membership) {
   if (profile?.es_admin_global) return 'administrador'
-  if (membership?.rol === 'Administrador' || membership?.rol === 'Administrador IPS') return 'administrador'
-  if (membership?.rol === 'Usuario INFECTOMAG' || membership?.rol === 'PROA') return 'infectomag'
+  if (membership?.rol === 'Usuario INFECTOMAG' || membership?.rol === 'PROA' || membership?.rol === 'Administrador IPS') return 'infectomag'
   if (membership?.rol === 'IPS Cliente' || membership?.rol === 'Consulta') return 'ips_cliente'
   return 'sin_acceso'
 }
@@ -118,6 +117,12 @@ if (admin.userType !== 'administrador') fail('ADMINISTRADOR tipo usuario', `Espe
 await expectAllowed('ADMINISTRADOR lee configuración', () =>
   admin.supabase.from('ips').select('id,nombre,nit,codigo_reps,estado,fecha_creacion').limit(10),
 )
+const roleAudit = await admin.supabase.from('usuario_ips').select('rol,estado')
+if (roleAudit.error) fail('ADMINISTRADOR audita roles finales', roleAudit.error)
+const roles = new Set((roleAudit.data ?? []).map((row) => row.rol))
+const invalidRoles = [...roles].filter((rol) => !['Usuario INFECTOMAG', 'IPS Cliente'].includes(rol))
+if (invalidRoles.length) fail('ADMINISTRADOR audita roles finales', `Roles no permitidos: ${invalidRoles.join(', ')}`)
+ok('ADMINISTRADOR audita roles finales', [...roles].sort().join(', ') || 'sin asignaciones')
 const adminService = await firstService(admin.supabase, admin.ips.id)
 await expectAllowed('ADMINISTRADOR escritura administrativa reversible', () =>
   admin.supabase
@@ -157,10 +162,9 @@ await expectRejected('USUARIO INFECTOMAG no modifica catálogo', () =>
 )
 await expectRejected('USUARIO INFECTOMAG no se eleva a Administrador', () =>
   infectomag.supabase
-    .from('usuario_ips')
-    .update({ rol: 'Administrador' })
+    .from('perfiles_usuario')
+    .update({ es_admin_global: true })
     .eq('usuario_id', infectomag.user.id)
-    .eq('ips_id', infectomag.ips.id)
     .select('usuario_id'),
 )
 await infectomag.supabase.auth.signOut()
@@ -245,10 +249,9 @@ await expectRejected('IPS CLIENTE no modifica catálogo', () =>
 )
 await expectRejected('IPS CLIENTE no se eleva a Administrador', () =>
   clientUser.supabase
-    .from('usuario_ips')
-    .update({ rol: 'Administrador' })
+    .from('perfiles_usuario')
+    .update({ es_admin_global: true })
     .eq('usuario_id', clientUser.user.id)
-    .eq('ips_id', clientUser.ips.id)
     .select('usuario_id'),
 )
 const otherIps = await clientUser.supabase

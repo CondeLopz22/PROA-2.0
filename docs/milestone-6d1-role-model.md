@@ -2,35 +2,33 @@
 
 PROA V2 queda definido con tres tipos funcionales:
 
-| Tipo | Alcance | Escritura clinica/operativa | Administracion |
-| --- | --- | --- | --- |
-| Administrador | Todas las IPS autorizadas/globales | Si | Si |
-| Usuario INFECTOMAG | IPS asignadas | Si | No |
-| IPS Cliente | Su IPS asignada | No | No |
+| Tipo | Fuente de verdad | Alcance | Escritura operativa | Administracion |
+| --- | --- | --- | --- | --- |
+| Administrador | `perfiles_usuario.es_admin_global = true` | Global | Si | Si |
+| Usuario INFECTOMAG | `usuario_ips.rol = 'Usuario INFECTOMAG'` | IPS asignadas activas | Si | No |
+| IPS Cliente | `usuario_ips.rol = 'IPS Cliente'` | IPS asignadas activas | No | No |
 
-## Homologacion de roles
+## Decisiones finales
 
-El codigo acepta temporalmente valores heredados para no bloquear sesiones existentes, pero los normaliza asi:
+- `Administrador` no se deriva de `usuario_ips.rol`.
+- `usuario_ips.rol` solo acepta roles institucionales: `Usuario INFECTOMAG` e `IPS Cliente`.
+- La administracion de plataforma depende exclusivamente de `perfiles_usuario.es_admin_global = true`.
+- La lectura Multi-IPS se controla con asignaciones activas en `usuario_ips`.
+- La escritura clinica/operativa requiere `Usuario INFECTOMAG` en la IPS asignada o administrador global.
+- `IPS Cliente` queda en modo lectura por UI y por RLS.
 
-| Valor heredado | Tipo funcional |
+## Homologacion
+
+| Valor anterior | Resultado |
 | --- | --- |
-| `Administrador IPS` | `Administrador` |
+| `Administrador IPS` | `Usuario INFECTOMAG` |
 | `PROA` | `Usuario INFECTOMAG` |
 | `Consulta` | `IPS Cliente` |
 
-La migracion pendiente `supabase/migrations/20260901090000_milestone_6d1_role_model.sql` propone actualizar esos valores en `usuario_ips.rol`.
+El usuario `0820c02c-0879-4dfb-a53e-9d6dfe894edb` se promueve explicitamente con `perfiles_usuario.es_admin_global = true` y conserva su relacion operativa con GESTION SALUD como `Usuario INFECTOMAG`.
 
-## Representacion actual
+El usuario `a9743fae-9e01-4b02-88f2-53c83c1e9f28` queda como `Usuario INFECTOMAG` en HUJMB y no se promueve a administrador.
 
-- `perfiles_usuario.es_admin_global = true` sigue identificando capacidad administrativa global.
-- `usuario_ips.rol` representa el tipo funcional dentro de una IPS.
-- `usuario_ips.estado = Activo` define asignacion vigente.
-- La UI usa `permissionService` para derivar `Administrador`, `Usuario INFECTOMAG`, `IPS Cliente` o `Sin acceso`.
+## Compatibilidad de UI
 
-## Decisiones
-
-- Administracion queda exclusiva para `Administrador`.
-- `Usuario INFECTOMAG` conserva llenado, consulta y analisis en IPS asignadas.
-- `IPS Cliente` queda en modo consulta y no debe poder escribir por RLS.
-- Los catalogos globales no se duplican por IPS en este milestone.
-- No se implementa creacion/invitacion de usuarios desde frontend porque requiere backend privilegiado.
+La interfaz no ofrece ni muestra `Administrador` como rol asignable en `usuario_ips`. Valores heredados visibles durante una transicion se normalizan internamente para no bloquear sesiones, pero no otorgan administracion.

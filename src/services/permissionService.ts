@@ -8,7 +8,7 @@ export const productRoleLabels: Record<ProductUserType, string> = {
   sin_acceso: 'Sin acceso',
 }
 
-export const productRoleValues = ['Administrador', 'Usuario INFECTOMAG', 'IPS Cliente'] as const
+export const productRoleValues = ['Usuario INFECTOMAG', 'IPS Cliente'] as const
 export type ProductRoleValue = (typeof productRoleValues)[number]
 
 export function normalizeProductUserType(
@@ -17,11 +17,9 @@ export function normalizeProductUserType(
 ): ProductUserType {
   if (profile?.es_admin_global) return 'administrador'
   switch (membership?.rol) {
-    case 'Administrador':
     case 'Administrador IPS':
-      return 'administrador'
-    case 'Usuario INFECTOMAG':
     case 'PROA':
+    case 'Usuario INFECTOMAG':
       return 'infectomag'
     case 'IPS Cliente':
     case 'Consulta':
@@ -32,7 +30,6 @@ export function normalizeProductUserType(
 }
 
 export function productRoleValueFor(userType: ProductUserType): ProductRoleValue | null {
-  if (userType === 'administrador') return 'Administrador'
   if (userType === 'infectomag') return 'Usuario INFECTOMAG'
   if (userType === 'ips_cliente') return 'IPS Cliente'
   return null
