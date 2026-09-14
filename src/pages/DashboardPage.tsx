@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { AlertCircle, CalendarClock, ClipboardList, LayoutGrid, List, Microscope, Plus, RefreshCw, UserCheck } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { AlertCircle, CalendarClock, ClipboardList, LayoutGrid, List, Microscope, Plus, RefreshCw, ShieldCheck, UserCheck } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { KanbanBoard, type KanbanColumn } from '../components/KanbanBoard'
 import { useIps } from '../features/ips/ipsContext'
 import { formatDateTime } from '../lib/date'
@@ -33,6 +33,7 @@ function microbiologySummary(row: ActiveCaseRow) {
 
 export function DashboardPage() {
   const { activeIps, userType } = useIps()
+  const [searchParams] = useSearchParams()
   const canWrite = canWriteOperationalData(userType)
   const [rows, setRows] = useState<ActiveCaseRow[]>([])
   const [view, setView] = useState<'Matriz' | 'Kanban'>('Matriz')
@@ -59,6 +60,11 @@ export function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIps?.id])
 
+  useEffect(() => {
+    const filtro = searchParams.get('filtro') as OperationalFilter | null
+    if (filtro) setActiveFilter(filtro)
+  }, [searchParams])
+
   const kpis = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
     return {
@@ -67,6 +73,8 @@ export function DashboardPage() {
       roundsToday: rows.filter((row) => row.latestRound?.fecha_hora_ronda?.slice(0, 10) === today).length,
       pendingResponse: rows.filter((row) => row.status === 'Respuesta pendiente').length,
       microbiology: rows.filter((row) => row.status === 'Microbiología pendiente/relevante').length,
+      auditOpen: rows.filter((row) => row.auditFindings.some((finding) => finding.estado === 'Abierto' || finding.estado === 'En seguimiento')).length,
+      auditPriority: rows.filter((row) => row.auditFindings.some((finding) => finding.severidad === 'Prioritario' && (finding.estado === 'Abierto' || finding.estado === 'En seguimiento'))).length,
     }
   }, [rows])
   const filteredRows = useMemo(
@@ -108,6 +116,8 @@ export function DashboardPage() {
         <Metric active={activeFilter === 'Rondas hoy'} icon={<ClipboardList size={22} />} label="Rondas hoy" onClick={() => toggleFilter('Rondas hoy')} value={kpis.roundsToday} />
         <Metric active={activeFilter === 'Respuesta pendiente'} icon={<RefreshCw size={22} />} label="Respuesta pendiente" onClick={() => toggleFilter('Respuesta pendiente')} value={kpis.pendingResponse} />
         <Metric active={activeFilter === 'Microbiología relevante'} icon={<Microscope size={22} />} label="Microbiología relevante" onClick={() => toggleFilter('Microbiología relevante')} value={kpis.microbiology} />
+        <Metric active={activeFilter === 'Hallazgos abiertos'} icon={<ShieldCheck size={22} />} label="Hallazgos abiertos" onClick={() => toggleFilter('Hallazgos abiertos')} value={kpis.auditOpen} />
+        <Metric active={activeFilter === 'Hallazgos prioritarios'} icon={<AlertCircle size={22} />} label="Prioritarios" onClick={() => toggleFilter('Hallazgos prioritarios')} value={kpis.auditPriority} />
       </section>
 
       <section className="panel">
@@ -149,6 +159,10 @@ export function DashboardPage() {
         ) : null}
       </section>
 
+      {!loading && filteredRows.some((row) => row.auditFindings.length) ? (
+        <AuditMatrix rows={filteredRows} />
+      ) : null}
+
       <section className="panel">
         <h2>Reglas de estado operativo</h2>
         <div className="subtle-list">
@@ -156,6 +170,67 @@ export function DashboardPage() {
         </div>
       </section>
     </main>
+  )
+}
+
+function AuditMatrix({ rows }: { rows: ActiveCaseRow[] }) {
+  const findings = rows.flatMap((row) =>
+    row.auditFindings.map((finding) => ({ row, finding })),
+  )
+  if (!findings.length) return null
+  return (
+    <section className="panel">
+      <div className="panel-title">
+        <ShieldCheck size={20} />
+        <div>
+          <h2>Auditoría antimicrobiana</h2>
+          <p>Condiciones que requieren revisión por el equipo PROA.</p>
+        </div>
+      </div>
+      <div className="table-wrap desktop-table">
+        <table className="data-table operational-table">
+          <thead>
+            <tr>
+              <th>Paciente</th>
+              <th>Servicio</th>
+              <th>Antimicrobiano</th>
+              <th>AWaRe</th>
+              <th>Hallazgo</th>
+              <th>Prioridad</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {findings.map(({ row, finding }) => (
+              <tr key={finding.hallazgo_id ?? finding.id}>
+                <td><strong>{patientDisplayName(row.patient)}</strong></td>
+                <td>{finding.servicio ?? row.service?.nombre ?? 'Sin servicio'}</td>
+                <td>{finding.antimicrobiano ?? treatmentSummary(row)}</td>
+                <td>{finding.aware_categoria ?? 'Sin clasificar'}</td>
+                <td>{finding.tipo_hallazgo}</td>
+                <td><span className="pill">{finding.severidad}</span></td>
+                <td>{finding.estado}</td>
+                <td><Link className="table-action" to={`/pacientes?documento=${row.patient.numero_identificacion}`}>Revisar</Link></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mobile-card-list">
+        {findings.map(({ row, finding }) => (
+          <Link className="mobile-record-card" key={finding.hallazgo_id ?? finding.id} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
+            <div className="mobile-card-header">
+              <strong>{patientDisplayName(row.patient)}</strong>
+              <span className="pill">{finding.severidad}</span>
+            </div>
+            <span>{finding.tipo_hallazgo}</span>
+            <span>{finding.antimicrobiano ?? treatmentSummary(row)} · {finding.aware_categoria ?? 'Sin AWaRe'}</span>
+            <span>{finding.estado}</span>
+          </Link>
+        ))}
+      </div>
+    </section>
   )
 }
 

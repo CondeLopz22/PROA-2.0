@@ -19,6 +19,11 @@ import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
 import { formatDate } from '../lib/date'
 import {
+  getAuditConfig,
+  getAuditRules,
+  updateAuditConfig,
+} from '../services/auditService'
+import {
   assignUserToIps,
   createServiceForIps,
   getAdminAccessRows,
@@ -44,7 +49,7 @@ import { catalogLabel } from '../services/catalogService'
 import { patientDisplayName } from '../services/patientService'
 import { productRoleLabels, productRoleValues, type ProductRoleValue } from '../services/permissionService'
 import { readableError } from '../services/supabaseErrors'
-import type { Ips, OmsDdd, ServiceIps, UUID } from '../types/domain'
+import type { Ips, OmsDdd, ProaAuditConfig, ProaAuditRule, ServiceIps, UUID } from '../types/domain'
 
 type AdminSection =
   | 'overview'
@@ -563,11 +568,103 @@ function MicrobiologyCatalogPanel({ context }: { context: AdminContext | null })
 }
 
 function ProaCatalogPanel({ context }: { context: AdminContext | null }) {
+  const { activeIps } = useIps()
   return (
     <div className="admin-stacked">
+      {activeIps ? <AuditConfigPanel activeIpsId={activeIps.id} context={context} /> : null}
       <CatalogPanel context={context} kind="interventions" title="Intervenciones PROA" />
       <CatalogPanel context={context} kind="categories" title="Categorías PROA" />
     </div>
+  )
+}
+
+function AuditConfigPanel({ activeIpsId, context }: { activeIpsId: UUID; context: AdminContext | null }) {
+  const [config, setConfig] = useState<ProaAuditConfig | null>(null)
+  const [rules, setRules] = useState<ProaAuditRule[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const canManage = Boolean(context?.canManageCatalogs)
+
+  async function load() {
+    setError(null)
+    try {
+      const [nextConfig, nextRules] = await Promise.all([getAuditConfig(activeIpsId), getAuditRules()])
+      setConfig(nextConfig)
+      setRules(nextRules)
+    } catch (loadError) {
+      setError(readableError(loadError))
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIpsId])
+
+  function setNumeric(key: keyof ProaAuditConfig, value: string) {
+    setConfig((current) => current ? { ...current, [key]: value === '' ? null : Number(value) } : current)
+  }
+
+  async function save() {
+    if (!config || !canManage) return
+    setSaving(true)
+    setError(null)
+    try {
+      await updateAuditConfig(activeIpsId, {
+        umbral_tratamiento_prolongado_dias: config.umbral_tratamiento_prolongado_dias,
+        umbral_profilaxis_prolongada_dias: config.umbral_profilaxis_prolongada_dias,
+        umbral_seguimiento_vencido_dias: config.umbral_seguimiento_vencido_dias,
+        umbral_microbiologia_pendiente_dias: config.umbral_microbiologia_pendiente_dias,
+      })
+      await load()
+    } catch (saveError) {
+      setError(readableError(saveError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-title">
+        <ShieldCheck size={20} />
+        <div>
+          <h2>Auditoría antimicrobiana</h2>
+          <p>Umbrales por IPS y reglas determinísticas. Las reglas sin umbral quedan inactivas.</p>
+        </div>
+      </div>
+      {error ? <div className="alert error"><AlertCircle size={18} /> {error}</div> : null}
+      {config ? (
+        <div className="form-grid">
+          <label>
+            Tratamiento prolongado (días)
+            <input disabled={!canManage || saving} min="1" type="number" value={config.umbral_tratamiento_prolongado_dias ?? 5} onChange={(event) => setNumeric('umbral_tratamiento_prolongado_dias', event.target.value)} />
+          </label>
+          <label>
+            Profilaxis prolongada (días)
+            <input disabled={!canManage || saving} min="1" type="number" value={config.umbral_profilaxis_prolongada_dias ?? ''} onChange={(event) => setNumeric('umbral_profilaxis_prolongada_dias', event.target.value)} />
+          </label>
+          <label>
+            Seguimiento vencido (días)
+            <input disabled={!canManage || saving} min="1" type="number" value={config.umbral_seguimiento_vencido_dias ?? ''} onChange={(event) => setNumeric('umbral_seguimiento_vencido_dias', event.target.value)} />
+          </label>
+          <label>
+            Microbiología pendiente (días)
+            <input disabled={!canManage || saving} min="1" type="number" value={config.umbral_microbiologia_pendiente_dias ?? ''} onChange={(event) => setNumeric('umbral_microbiologia_pendiente_dias', event.target.value)} />
+          </label>
+        </div>
+      ) : <p className="muted">Configuración de auditoría pendiente de migración.</p>}
+      <div className="button-row">
+        <button className="primary-button" disabled={!canManage || saving || !config} onClick={save} type="button">{saving ? 'Guardando...' : 'Guardar auditoría'}</button>
+      </div>
+      <div className="subtle-list">
+        {rules.map((rule) => (
+          <span key={rule.codigo_regla}>
+            <strong>{rule.codigo_regla}</strong> · {rule.tipo_hallazgo} · {rule.severidad} · {rule.activa ? 'Activa' : 'Preparada'}
+          </span>
+        ))}
+      </div>
+    </section>
   )
 }
 

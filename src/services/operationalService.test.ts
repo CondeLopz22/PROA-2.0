@@ -9,6 +9,7 @@ function activeRow(overrides: Partial<ActiveCaseRow>): ActiveCaseRow {
     latestRound: null,
     activeTreatments: [],
     microbiology: [],
+    auditFindings: [],
     latestIntervention: null,
     status: 'Al día',
     requiresFollowUp: false,
@@ -26,6 +27,44 @@ describe('operational filters', () => {
 
     expect(rows.filter((row) => matchesOperationalFilter(row, 'Seguimiento requerido'))).toHaveLength(1)
     expect(rows.filter((row) => matchesOperationalFilter(row, 'Todos'))).toHaveLength(2)
+  })
+
+  it('filtra hallazgos abiertos y prioritarios desde auditoría antimicrobiana', () => {
+    const rows = [
+      activeRow({
+        case: { id: 'c1', ips_id: 'ips1', paciente_id: 'p1' },
+        auditFindings: [{
+          id: 'h1',
+          ips_id: 'ips1',
+          caso_id: 'c1',
+          codigo_regla: 'AUD-07',
+          tipo_hallazgo: 'Reserve activo',
+          categoria: 'AWaRe',
+          severidad: 'Prioritario',
+          estado: 'Abierto',
+          descripcion: 'Requiere revisión',
+          origen: 'Automático',
+        }],
+      }),
+      activeRow({
+        case: { id: 'c2', ips_id: 'ips1', paciente_id: 'p2' },
+        auditFindings: [{
+          id: 'h2',
+          ips_id: 'ips1',
+          caso_id: 'c2',
+          codigo_regla: 'AUD-03',
+          tipo_hallazgo: 'Tratamiento prolongado',
+          categoria: 'Duración',
+          severidad: 'Revisión',
+          estado: 'Resuelto',
+          descripcion: 'Resuelto',
+          origen: 'Automático',
+        }],
+      }),
+    ]
+
+    expect(rows.filter((row) => matchesOperationalFilter(row, 'Hallazgos abiertos'))).toHaveLength(1)
+    expect(rows.filter((row) => matchesOperationalFilter(row, 'Hallazgos prioritarios'))).toHaveLength(1)
   })
 
   it('combina búsqueda de rondas por paciente, identificación, servicio o profesional', () => {

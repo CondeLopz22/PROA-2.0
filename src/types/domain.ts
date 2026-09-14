@@ -268,6 +268,52 @@ export type ProaNote = {
   fecha_creacion?: string | null
 }
 
+export type AuditFindingStatus = 'Abierto' | 'En seguimiento' | 'Resuelto' | 'Descartado'
+export type AuditFindingSeverity = 'Informativo' | 'Revisión' | 'Prioritario'
+export type AuditFindingOrigin = 'Automático' | 'Profesional PROA'
+
+export type ProaAuditConfig = {
+  ips_id: UUID
+  umbral_tratamiento_prolongado_dias: number
+  umbral_profilaxis_prolongada_dias?: number | null
+  umbral_seguimiento_vencido_dias?: number | null
+  umbral_microbiologia_pendiente_dias?: number | null
+  fecha_creacion?: string | null
+  fecha_actualizacion?: string | null
+}
+
+export type ProaAuditRule = {
+  codigo_regla: string
+  tipo_hallazgo: string
+  categoria: string
+  severidad: AuditFindingSeverity
+  activa: boolean
+  parametro_umbral?: string | null
+  descripcion?: string | null
+}
+
+export type ProaAuditFinding = {
+  id: UUID
+  ips_id: UUID
+  caso_id: UUID
+  tratamiento_id?: UUID | null
+  ronda_detectada_id?: UUID | null
+  codigo_regla: string
+  tipo_hallazgo: string
+  categoria: string
+  severidad: AuditFindingSeverity
+  fecha_deteccion?: string | null
+  estado: AuditFindingStatus
+  descripcion: string
+  origen: AuditFindingOrigin
+  intervencion_id?: UUID | null
+  fecha_resolucion?: string | null
+  motivo_descarte?: string | null
+  usuario_actualizacion?: UUID | null
+  fecha_creacion?: string | null
+  fecha_actualizacion?: string | null
+}
+
 export type PatientLookupResult = {
   patient: Patient
   activeCase: CaseProa | null

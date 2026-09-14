@@ -115,6 +115,7 @@ const baseRow: ActiveCaseRow = {
       microorganismo_id: null,
     },
   ],
+  auditFindings: [],
   service: { id: 'service-1', ips_id: 'ips-1', nombre: 'Medicina Interna', estado: 'Activo' },
   latestIntervention: null,
   requiresFollowUp: true,

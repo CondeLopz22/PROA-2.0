@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import type { AuditFindingRow } from './auditService'
 import { treatmentDay } from './treatmentService'
 import type { CaseProa, Microbiology, Patient, ProaIntervention, RoundProa, ServiceIps, Treatment, UUID, UserProfile } from '../types/domain'
 
@@ -16,6 +17,8 @@ export type OperationalFilter =
   | 'Rondas hoy'
   | 'Respuesta pendiente'
   | 'Microbiología relevante'
+  | 'Hallazgos abiertos'
+  | 'Hallazgos prioritarios'
 
 export type ActiveCaseRow = {
   case: CaseProa
@@ -24,6 +27,7 @@ export type ActiveCaseRow = {
   latestRound: RoundProa | null
   activeTreatments: Treatment[]
   microbiology: Microbiology[]
+  auditFindings: AuditFindingRow[]
   latestIntervention: ProaIntervention | null
   status: OperationalStatus
   requiresFollowUp: boolean
@@ -107,6 +111,8 @@ export function matchesOperationalFilter(row: ActiveCaseRow, filter: Operational
   if (filter === 'Rondas hoy') return row.latestRound?.fecha_hora_ronda?.slice(0, 10) === today
   if (filter === 'Respuesta pendiente') return row.status === 'Respuesta pendiente'
   if (filter === 'Microbiología relevante') return row.status === 'Microbiología pendiente/relevante'
+  if (filter === 'Hallazgos abiertos') return row.auditFindings.some((finding) => finding.estado === 'Abierto' || finding.estado === 'En seguimiento')
+  if (filter === 'Hallazgos prioritarios') return row.auditFindings.some((finding) => finding.severidad === 'Prioritario' && (finding.estado === 'Abierto' || finding.estado === 'En seguimiento'))
   return true
 }
 
@@ -150,18 +156,20 @@ export async function getActiveCasesCockpit(ipsId: UUID): Promise<ActiveCaseRow[
 
   const patientIds = Array.from(new Set(cases.map((row) => row.paciente_id)))
   const caseIds = cases.map((row) => row.id)
-  const [patientsResult, roundsResult, treatmentsResult, microbiologyResult, servicesResult] = await Promise.all([
+  const [patientsResult, roundsResult, treatmentsResult, microbiologyResult, servicesResult, auditResult] = await Promise.all([
     supabase.from('pacientes').select('*').eq('ips_id', ipsId).in('id', patientIds),
     supabase.from('rondas_proa').select('*').eq('ips_id', ipsId).in('caso_id', caseIds).order('fecha_hora_ronda', { ascending: false }),
     supabase.from('tratamientos_antimicrobianos').select('*').eq('ips_id', ipsId).in('caso_id', caseIds).eq('estado', 'Activo'),
     supabase.from('microbiologia').select('*').eq('ips_id', ipsId).in('caso_id', caseIds).order('fecha_toma', { ascending: false }),
     supabase.from('servicios_ips').select('*').eq('ips_id', ipsId),
+    supabase.from('mart_auditoria_proa').select('*').eq('ips_id', ipsId).in('caso_id', caseIds).in('estado', ['Abierto', 'En seguimiento']).limit(300),
   ])
   if (patientsResult.error) throw patientsResult.error
   if (roundsResult.error) throw roundsResult.error
   if (treatmentsResult.error) throw treatmentsResult.error
   if (microbiologyResult.error) throw microbiologyResult.error
   if (servicesResult.error) throw servicesResult.error
+  if (auditResult.error && auditResult.error.code !== 'PGRST205') throw auditResult.error
 
   const rounds = (roundsResult.data ?? []) as RoundProa[]
   const roundIds = rounds.map((row) => row.id)
@@ -174,6 +182,7 @@ export async function getActiveCasesCockpit(ipsId: UUID): Promise<ActiveCaseRow[
   const roundsByCase = groupBy(rounds, (row) => row.caso_id)
   const treatmentsByCase = groupBy((treatmentsResult.data ?? []) as Treatment[], (row) => row.caso_id)
   const microbiologyByCase = groupBy((microbiologyResult.data ?? []) as Microbiology[], (row) => row.caso_id)
+  const auditByCase = groupBy((auditResult.data ?? []) as AuditFindingRow[], (row) => row.caso_id)
   const interventionsByRound = groupBy((interventions.data ?? []) as ProaIntervention[], (row) => row.ronda_id)
   const services = new Map(((servicesResult.data ?? []) as ServiceIps[]).map((row) => [row.id, row]))
 
@@ -185,6 +194,7 @@ export async function getActiveCasesCockpit(ipsId: UUID): Promise<ActiveCaseRow[
       const latestRound = latestByDate(caseRounds, (row) => row.fecha_hora_ronda)
       const activeTreatments = treatmentsByCase.get(caseRow.id) ?? []
       const microbiology = microbiologyByCase.get(caseRow.id) ?? []
+      const auditFindings = auditByCase.get(caseRow.id) ?? []
       const latestIntervention = latestRound ? latestByDate(interventionsByRound.get(latestRound.id) ?? [], (row) => row.fecha_creacion) : null
       const maxTreatmentDay = activeTreatments.reduce<number | null>((max, treatment) => {
         const day = treatmentDay(treatment.fecha_inicio, latestRound?.fecha_hora_ronda)
@@ -198,6 +208,7 @@ export async function getActiveCasesCockpit(ipsId: UUID): Promise<ActiveCaseRow[
         latestRound,
         activeTreatments,
         microbiology,
+        auditFindings,
         latestIntervention,
         status: deriveStatus({ latestRound, activeTreatments, microbiology, intervention: latestIntervention }),
         requiresFollowUp: Boolean(latestIntervention?.requiere_seguimiento),

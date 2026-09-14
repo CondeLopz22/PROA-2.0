@@ -21,6 +21,11 @@ import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
 import { ageFromBirthDate, formatDate, formatDateTime } from '../lib/date'
 import {
+  evaluateCaseAudit,
+  getRoundAuditFindings,
+  updateAuditFindingStatus,
+} from '../services/auditService'
+import {
   getProaCategories,
   getAntimicrobialCatalog,
   getInterventionCatalog,
@@ -78,6 +83,7 @@ import type {
   CatalogItem,
   DiagnosisRound,
   MicroorganismCatalogItem,
+  ProaAuditFinding,
   ProaNote,
   RoundClinicalBundle,
   SampleTypeCatalogItem,
@@ -177,6 +183,7 @@ export function RoundEditorPage() {
   const [interventionCatalog, setInterventionCatalog] = useState<CatalogItem[]>([])
   const [previousMicrobiology, setPreviousMicrobiology] = useState<MicrobiologyBundle[]>([])
   const [currentMicrobiology, setCurrentMicrobiology] = useState<MicrobiologyBundle[]>([])
+  const [auditFindings, setAuditFindings] = useState<ProaAuditFinding[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -228,11 +235,12 @@ export function RoundEditorPage() {
       ])
       const nextServices = await getIpsServices(nextBundle.round.ips_id)
       const nextCasoId = nextBundle.round.caso_id ?? nextBundle.caseProa.id
-      const [roundMicrobiology, caseMicrobiology, roundIntervention, latestNote] = await Promise.all([
+      const [roundMicrobiology, caseMicrobiology, roundIntervention, latestNote, roundFindings] = await Promise.all([
         getRoundMicrobiology(nextBundle.round.id),
         getCaseMicrobiology(nextCasoId, nextBundle.round.id),
         getRoundIntervention(nextBundle.round.id),
         getLatestRoundNote(nextBundle.round.id),
+        getRoundAuditFindings(nextBundle.round.id),
       ])
       setBundle(nextBundle)
       setCategories(nextCategories)
@@ -240,6 +248,7 @@ export function RoundEditorPage() {
       setServices(nextServices)
       setPreviousMicrobiology(caseMicrobiology)
       setCurrentMicrobiology(roundMicrobiology)
+      setAuditFindings(roundFindings)
       setMicrobiology(microbiologyDraftFromBundle(roundMicrobiology[0]))
       setIntervention(interventionDraftFromBundle(roundIntervention))
       setNote(latestNote)
@@ -446,6 +455,8 @@ export function RoundEditorPage() {
       },
     })
 
+    await evaluateCaseAudit({ ipsId: savedRound.ips_id, casoId, roundId: savedRound.id })
+
     if (generatedNote || finalNote) {
       await saveRoundNoteDraft({ roundId: savedRound.id, generatedText: generatedNote, finalText: finalNote || generatedNote })
     }
@@ -616,6 +627,7 @@ export function RoundEditorPage() {
           <a href="#contexto">Contexto</a>
           <a href="#diagnostico">Diagnóstico</a>
           <a href="#tratamiento">Tratamiento</a>
+          <a href="#auditoria">Auditoría</a>
           <a href="#microbiologia">Microbiología</a>
           <a href="#intervencion">Intervención</a>
           <a href="#nota">Nota</a>
@@ -754,6 +766,23 @@ export function RoundEditorPage() {
         />
         </div>
 
+        <div id="auditoria">
+        <AuditBlock
+          findings={auditFindings}
+          currentInterventionId={intervention.id}
+          onStatusChange={async (finding, status) => {
+            await updateAuditFindingStatus({ findingId: finding.id, status, userId: user?.id })
+            await load()
+          }}
+          onLinkIntervention={async (finding) => {
+            if (!intervention.id) return
+            await updateAuditFindingStatus({ findingId: finding.id, interventionId: intervention.id, userId: user?.id })
+            await load()
+          }}
+          readOnly={readOnly}
+        />
+        </div>
+
         <div id="microbiologia">
         <MicrobiologyBlock
           currentMicrobiology={currentMicrobiology}
@@ -792,6 +821,53 @@ export function RoundEditorPage() {
         </div>
       </section>
     </main>
+  )
+}
+
+function AuditBlock({
+  currentInterventionId,
+  findings,
+  onLinkIntervention,
+  onStatusChange,
+  readOnly,
+}: {
+  currentInterventionId?: string
+  findings: ProaAuditFinding[]
+  onLinkIntervention: (finding: ProaAuditFinding) => Promise<void>
+  onStatusChange: (finding: ProaAuditFinding, status: ProaAuditFinding['estado']) => Promise<void>
+  readOnly: boolean
+}) {
+  const open = findings.filter((finding) => finding.estado === 'Abierto' || finding.estado === 'En seguimiento')
+  return (
+    <article className="panel audit-panel">
+      <div className="panel-title">
+        <ShieldCheck size={20} />
+        <div>
+          <h2>Auditoría antimicrobiana</h2>
+          <p>Hallazgos que requieren revisión profesional, sin recomendación automática.</p>
+        </div>
+      </div>
+      {!findings.length ? <p className="muted">Sin hallazgos de auditoría registrados para esta ronda.</p> : null}
+      {open.length ? <div className="alert warning">{open.length} hallazgo(s) abierto(s) o en seguimiento.</div> : null}
+      <div className="subtle-list audit-finding-list">
+        {findings.slice(0, 6).map((finding) => (
+          <span key={finding.id}>
+            <strong>{finding.codigo_regla}</strong> · {finding.tipo_hallazgo} · {finding.severidad} · {finding.estado}
+            <small>{finding.descripcion}</small>
+            {finding.intervencion_id ? <small>Intervención vinculada: {finding.intervencion_id}</small> : null}
+            {!readOnly && currentInterventionId && !finding.intervencion_id ? (
+              <button className="button-link table-action" onClick={() => onLinkIntervention(finding)} type="button">Vincular intervención actual</button>
+            ) : null}
+            {!readOnly && finding.estado === 'Abierto' ? (
+              <button className="button-link table-action" onClick={() => onStatusChange(finding, 'En seguimiento')} type="button">Mantener en seguimiento</button>
+            ) : null}
+            {!readOnly && (finding.estado === 'Abierto' || finding.estado === 'En seguimiento') ? (
+              <button className="button-link table-action" onClick={() => onStatusChange(finding, 'Resuelto')} type="button">Resolver</button>
+            ) : null}
+          </span>
+        ))}
+      </div>
+    </article>
   )
 }
 

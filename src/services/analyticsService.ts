@@ -67,6 +67,19 @@ export type NativeIndicators = {
     latestDdd100: number | null
     aware: AwareSummary
   }
+  audit: {
+    auditedTreatments: number
+    treatmentsWithFindings: number
+    findingRate: number | null
+    openFindings: number
+    priorityFindings: number
+    resolvedFindings: number
+    intervenedRate: number | null
+    resolvedRate: number | null
+    byType: Array<{ label: string; value: number }>
+    bySeverity: Array<{ label: string; value: number }>
+    byAware: Array<{ label: string; value: number }>
+  }
 }
 
 function toNumber(value: unknown) {
@@ -197,18 +210,22 @@ export async function getDddMartRows({
 }
 
 export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators> {
-  const [casesResult, roundsResult, interventionsResult, microbiologyResult, dddResult] = await Promise.all([
+  const [casesResult, roundsResult, interventionsResult, microbiologyResult, dddResult, treatmentsResult, auditResult] = await Promise.all([
     supabase.from('mart_casos_proa').select('caso_id,estado').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_rondas_proa').select('ronda_id,tipo_valoracion,hubo_intervencion').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_intervenciones_proa').select('intervencion_id,tipo_intervencion,aceptacion').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_microbiologia').select('muestra_id,resultado_general,microorganismo,numero_mecanismos').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_ddd').select('periodo,servicio,servicio_id,antimicrobiano_id,antimicrobiano,aware_categoria,ddd_calculadas,ddd_100_camas_dia,gramos_consumidos,camas_dia_ocupadas').eq('ips_id', ipsId).limit(1000),
+    supabase.from('tratamientos_antimicrobianos').select('id').eq('ips_id', ipsId).limit(1000),
+    supabase.from('mart_auditoria_proa').select('hallazgo_id,tratamiento_id,tipo_hallazgo,severidad,estado,intervencion_id,aware_categoria').eq('ips_id', ipsId).limit(1000),
   ])
   if (casesResult.error) throw casesResult.error
   if (roundsResult.error) throw roundsResult.error
   if (interventionsResult.error) throw interventionsResult.error
   if (microbiologyResult.error) throw microbiologyResult.error
   if (dddResult.error) throw dddResult.error
+  if (treatmentsResult.error) throw treatmentsResult.error
+  if (auditResult.error && auditResult.error.code !== 'PGRST205') throw auditResult.error
 
   const rounds = roundsResult.data ?? []
   const interventions = interventionsResult.data ?? []
@@ -222,6 +239,27 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
   const trend = buildDddTrend(dddRows)
   const aware = buildAwareSummary(dddRows)
   const latestTrend = trend[trend.length - 1]
+  const auditRows = (auditResult.data ?? []) as Array<{
+    hallazgo_id?: UUID | null
+    tratamiento_id?: UUID | null
+    tipo_hallazgo?: string | null
+    severidad?: string | null
+    estado?: string | null
+    intervencion_id?: UUID | null
+    aware_categoria?: string | null
+  }>
+  const auditedTreatments = (treatmentsResult.data ?? []).length
+  const treatmentsWithFindings = new Set(auditRows.map((row) => row.tratamiento_id).filter(Boolean)).size
+  const openAudit = auditRows.filter((row) => row.estado === 'Abierto' || row.estado === 'En seguimiento')
+  const intervenedAudit = auditRows.filter((row) => row.intervencion_id)
+  const auditTypes = new Map<string, number>()
+  const auditSeverity = new Map<string, number>()
+  const auditAware = new Map<string, number>()
+  auditRows.forEach((row) => {
+    increment(auditTypes, row.tipo_hallazgo)
+    increment(auditSeverity, row.severidad)
+    increment(auditAware, row.aware_categoria)
+  })
 
   return {
     activity: {
@@ -251,6 +289,19 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
       totalGrams: dddRows.reduce((sum, row) => sum + toNumber(row.gramos_consumidos), 0),
       latestDdd100: latestTrend?.ddd100 ?? null,
       aware,
+    },
+    audit: {
+      auditedTreatments,
+      treatmentsWithFindings,
+      findingRate: auditedTreatments ? (treatmentsWithFindings / auditedTreatments) * 100 : null,
+      openFindings: openAudit.length,
+      priorityFindings: openAudit.filter((row) => row.severidad === 'Prioritario').length,
+      resolvedFindings: auditRows.filter((row) => row.estado === 'Resuelto').length,
+      intervenedRate: auditRows.length ? (intervenedAudit.length / auditRows.length) * 100 : null,
+      resolvedRate: auditRows.length ? (auditRows.filter((row) => row.estado === 'Resuelto').length / auditRows.length) * 100 : null,
+      byType: top(auditTypes),
+      bySeverity: top(auditSeverity),
+      byAware: top(auditAware),
     },
   }
 }
