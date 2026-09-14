@@ -122,7 +122,8 @@ set
     else aware_version
   end;
 
-create or replace view public.mart_ddd as
+create or replace view public.mart_ddd
+with (security_invoker = true) as
 select
   r.id as registro_ddd_id,
   c.id as consumo_id,
@@ -143,6 +144,8 @@ select
   c.ddd_calculadas,
   c.ddd_100_camas_dia,
   r.estado as estado_registro,
+  -- `codigo_atc` se conserva arriba por compatibilidad con consumidores actuales.
+  -- `atc_codigo` se anexa como campo AWaRe canonico sin reordenar la vista existente.
   coalesce(a.atc_codigo, a.codigo_atc) as atc_codigo,
   a.aware_categoria,
   a.aware_nombre_oms,

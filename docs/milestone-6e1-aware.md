@@ -56,6 +56,16 @@ Se conservan los 48 antimicrobianos actuales. La migracion actualiza unicamente 
 - `clase_farmacologica`
 - `aware_version`
 
+La vista conserva en el mismo orden todas las columnas actuales, incluida `codigo_atc`, para no romper consumidores existentes. Las columnas AWaRe se agregan al final. `atc_codigo` se mantiene como campo canónico AWaRe/ATC nuevo; por ahora toma `codigo_atc` como respaldo cuando exista, sin inventar códigos.
+
+La migración declara explícitamente:
+
+```sql
+with (security_invoker = true)
+```
+
+para conservar el comportamiento actual de seguridad de `mart_ddd` y evitar que la vista salte RLS.
+
 No se modifican calculos transaccionales DDD ni triggers existentes.
 
 ## Indicador principal
