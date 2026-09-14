@@ -78,6 +78,18 @@ function ruleDraft(rule: ProaAuditRule | undefined, fallback: Pick<AuditFindingD
   }
 }
 
+export function shouldFlagReserveWithoutTreatmentIntervention({
+  awareCategory,
+  linkedTreatmentIds,
+  treatmentId,
+}: {
+  awareCategory?: string | null
+  linkedTreatmentIds: Set<UUID>
+  treatmentId: UUID
+}) {
+  return awareCategory === 'Reserve' && !linkedTreatmentIds.has(treatmentId)
+}
+
 export async function getAuditConfig(ipsId: UUID) {
   const { data, error } = await supabase
     .from('configuracion_auditoria_proa')
@@ -248,20 +260,29 @@ export async function evaluateCaseAudit({
   const activeRules = ruleMap(rules)
   const treatments = (treatmentsResult.data ?? []) as Array<Treatment & { catalogo_antimicrobianos?: { aware_categoria?: string | null } | null }>
   const activeTreatments = treatments.filter(isActiveTreatment)
+  const activeTreatmentIds = activeTreatments.map((treatment) => treatment.id)
   const rounds = (roundsResult.data ?? []) as RoundProa[]
   const roundIds = rounds.map((round) => round.id)
   const latestRound = rounds[0] ?? null
   const detectionRoundId = roundId ?? latestRound?.id ?? null
   const microbiology = (microbiologyResult.data ?? []) as Microbiology[]
 
-  const [diagnosesResult, interventionsResult] = await Promise.all([
+  const [diagnosesResult, interventionsResult, interventionTreatmentResult] = await Promise.all([
     roundIds.length ? supabase.from('diagnosticos_ronda').select('*').in('ronda_id', roundIds) : Promise.resolve({ data: [], error: null }),
     roundIds.length ? supabase.from('intervenciones_proa').select('*').eq('ips_id', ipsId).in('ronda_id', roundIds) : Promise.resolve({ data: [], error: null }),
+    activeTreatmentIds.length ? supabase.from('intervencion_tratamiento').select('intervencion_id,tratamiento_id').in('tratamiento_id', activeTreatmentIds) : Promise.resolve({ data: [], error: null }),
   ])
   if (diagnosesResult.error) throw diagnosesResult.error
   if (interventionsResult.error) throw interventionsResult.error
+  if (interventionTreatmentResult.error) throw interventionTreatmentResult.error
   const diagnoses = (diagnosesResult.data ?? []) as DiagnosisRound[]
   const interventions = (interventionsResult.data ?? []) as ProaIntervention[]
+  const proaInterventionIds = new Set(interventions.filter((intervention) => intervention.hubo_intervencion).map((intervention) => intervention.id))
+  const treatmentIdsWithIntervention = new Set(
+    ((interventionTreatmentResult.data ?? []) as Array<{ intervencion_id?: UUID | null; tratamiento_id?: UUID | null }>)
+      .filter((relation) => relation.intervencion_id && relation.tratamiento_id && proaInterventionIds.has(relation.intervencion_id))
+      .map((relation) => relation.tratamiento_id as UUID),
+  )
   const drafts: AuditFindingDraft[] = []
 
   for (const treatment of activeTreatments) {
@@ -285,10 +306,9 @@ export async function evaluateCaseAudit({
       const rule = ruleDraft(activeRules.get('AUD-07'), { code: 'AUD-07', type: 'Antimicrobiano Reserve activo', category: 'AWaRe', severity: 'Prioritario' })
       drafts.push({ ipsId, casoId, treatmentId: treatment.id, roundId: detectionRoundId, ...rule, description: `${treatment.antimicrobiano ?? 'Antimicrobiano'} está clasificado como Reserve. Requiere revisión PROA.` })
     }
-    const relatedIntervention = interventions.some((intervention) => intervention.hubo_intervencion)
-    if (activeRules.has('AUD-08') && aware === 'Reserve' && !relatedIntervention) {
+    if (activeRules.has('AUD-08') && shouldFlagReserveWithoutTreatmentIntervention({ awareCategory: aware, linkedTreatmentIds: treatmentIdsWithIntervention, treatmentId: treatment.id })) {
       const rule = ruleDraft(activeRules.get('AUD-08'), { code: 'AUD-08', type: 'Reserve sin intervención asociada', category: 'AWaRe', severity: 'Prioritario' })
-      drafts.push({ ipsId, casoId, treatmentId: treatment.id, roundId: detectionRoundId, ...rule, description: `${treatment.antimicrobiano ?? 'Antimicrobiano Reserve'} no tiene intervención PROA asociada visible en el caso.` })
+      drafts.push({ ipsId, casoId, treatmentId: treatment.id, roundId: detectionRoundId, ...rule, description: `${treatment.antimicrobiano ?? 'Antimicrobiano Reserve'} no tiene intervención PROA asociada al tratamiento.` })
     }
   }
 
