@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import type { UUID } from '../types/domain'
+import type { AwareCategory, UUID } from '../types/domain'
 
 export type DddMartRow = {
   consumo_id?: UUID
@@ -11,6 +11,11 @@ export type DddMartRow = {
   antimicrobiano_id?: UUID | null
   antimicrobiano?: string | null
   codigo_atc?: string | null
+  atc_codigo?: string | null
+  aware_categoria?: AwareCategory | string | null
+  aware_nombre_oms?: string | null
+  clase_farmacologica?: string | null
+  aware_version?: string | null
   via?: string | null
   gramos_consumidos?: number | string | null
   ddd_calculadas?: number | string | null
@@ -23,6 +28,18 @@ export type TrendPoint = {
   ddd: number
   ddd100: number | null
   gramos: number
+}
+
+export type AwareSummary = {
+  accessDdd: number
+  watchDdd: number
+  reserveDdd: number
+  denominatorDdd: number
+  accessPercent: number | null
+  distribution: Array<{ label: AwareCategory; value: number }>
+  byAntimicrobial: Array<{ label: string; value: number; category: AwareCategory | 'Otro' }>
+  byService: Array<{ label: string; value: number; category: AwareCategory | 'Otro' }>
+  trend: Array<{ periodo: string; Access: number; Watch: number; Reserve: number }>
 }
 
 export type NativeIndicators = {
@@ -48,6 +65,7 @@ export type NativeIndicators = {
     totalDdd: number
     totalGrams: number
     latestDdd100: number | null
+    aware: AwareSummary
   }
 }
 
@@ -67,6 +85,65 @@ function top(map: Map<string, number>, limit = 8) {
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, limit)
+}
+
+export function isAwareDenominatorCategory(value?: string | null) {
+  return value === 'Access' || value === 'Watch' || value === 'Reserve'
+}
+
+export function buildAwareSummary(rows: DddMartRow[]): AwareSummary {
+  const distribution = new Map<AwareCategory, number>()
+  const antimicrobial = new Map<string, { value: number; category: AwareCategory | 'Otro' }>()
+  const service = new Map<string, { value: number; category: AwareCategory | 'Otro' }>()
+  const trend = new Map<string, { Access: number; Watch: number; Reserve: number }>()
+
+  rows.forEach((row) => {
+    const category = (row.aware_categoria ?? 'Sin clasificar') as AwareCategory
+    const ddd = toNumber(row.ddd_calculadas)
+    distribution.set(category, (distribution.get(category) ?? 0) + ddd)
+    const categoryOrOther = isAwareDenominatorCategory(category) ? category : 'Otro'
+
+    const antimicrobialLabel = row.antimicrobiano ?? row.antimicrobiano_id ?? 'Sin antimicrobiano'
+    const antimicrobialCurrent = antimicrobial.get(antimicrobialLabel) ?? { value: 0, category: categoryOrOther }
+    antimicrobial.set(antimicrobialLabel, { value: antimicrobialCurrent.value + ddd, category: antimicrobialCurrent.category })
+
+    const serviceLabel = row.servicio ?? row.servicio_id ?? 'Sin servicio'
+    const serviceCurrent = service.get(serviceLabel) ?? { value: 0, category: categoryOrOther }
+    service.set(serviceLabel, { value: serviceCurrent.value + ddd, category: serviceCurrent.category })
+
+    if (isAwareDenominatorCategory(category)) {
+      const period = trend.get(row.periodo) ?? { Access: 0, Watch: 0, Reserve: 0 }
+      period[category] += ddd
+      trend.set(row.periodo, period)
+    }
+  })
+
+  const accessDdd = distribution.get('Access') ?? 0
+  const watchDdd = distribution.get('Watch') ?? 0
+  const reserveDdd = distribution.get('Reserve') ?? 0
+  const denominatorDdd = accessDdd + watchDdd + reserveDdd
+
+  return {
+    accessDdd,
+    watchDdd,
+    reserveDdd,
+    denominatorDdd,
+    accessPercent: denominatorDdd > 0 ? (accessDdd / denominatorDdd) * 100 : null,
+    distribution: (['Access', 'Watch', 'Reserve', 'No aplica', 'Sin clasificar'] as AwareCategory[])
+      .map((label) => ({ label, value: distribution.get(label) ?? 0 }))
+      .filter((row) => row.value > 0),
+    byAntimicrobial: Array.from(antimicrobial.entries())
+      .map(([label, value]) => ({ label, ...value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10),
+    byService: Array.from(service.entries())
+      .map(([label, value]) => ({ label, ...value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10),
+    trend: Array.from(trend.entries())
+      .map(([periodo, value]) => ({ periodo, ...value }))
+      .sort((a, b) => a.periodo.localeCompare(b.periodo)),
+  }
 }
 
 export function buildDddTrend(rows: DddMartRow[]): TrendPoint[] {
@@ -94,21 +171,24 @@ export async function getDddMartRows({
   serviceId,
   from,
   to,
+  awareCategory,
 }: {
   ipsId: UUID
   antimicrobialId?: UUID | ''
   serviceId?: UUID | ''
   from?: string
   to?: string
+  awareCategory?: string
 }) {
   let query = supabase
     .from('mart_ddd')
-    .select('consumo_id,registro_ddd_id,ips_id,periodo,servicio,servicio_id,antimicrobiano_id,antimicrobiano,codigo_atc,via,gramos_consumidos,ddd_calculadas,ddd_100_camas_dia,camas_dia_ocupadas')
+    .select('consumo_id,registro_ddd_id,ips_id,periodo,servicio,servicio_id,antimicrobiano_id,antimicrobiano,codigo_atc,atc_codigo,aware_categoria,aware_nombre_oms,clase_farmacologica,aware_version,via,gramos_consumidos,ddd_calculadas,ddd_100_camas_dia,camas_dia_ocupadas')
     .eq('ips_id', ipsId)
     .order('periodo', { ascending: true })
     .limit(600)
   if (antimicrobialId) query = query.eq('antimicrobiano_id', antimicrobialId)
   if (serviceId) query = query.eq('servicio_id', serviceId)
+  if (awareCategory) query = query.eq('aware_categoria', awareCategory)
   if (from) query = query.gte('periodo', from)
   if (to) query = query.lte('periodo', to)
   const { data, error } = await query
@@ -122,7 +202,7 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
     supabase.from('mart_rondas_proa').select('ronda_id,tipo_valoracion,hubo_intervencion').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_intervenciones_proa').select('intervencion_id,tipo_intervencion,aceptacion').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_microbiologia').select('muestra_id,resultado_general,microorganismo,numero_mecanismos').eq('ips_id', ipsId).limit(1000),
-    supabase.from('mart_ddd').select('periodo,ddd_calculadas,ddd_100_camas_dia,gramos_consumidos,camas_dia_ocupadas').eq('ips_id', ipsId).limit(1000),
+    supabase.from('mart_ddd').select('periodo,servicio,servicio_id,antimicrobiano_id,antimicrobiano,aware_categoria,ddd_calculadas,ddd_100_camas_dia,gramos_consumidos,camas_dia_ocupadas').eq('ips_id', ipsId).limit(1000),
   ])
   if (casesResult.error) throw casesResult.error
   if (roundsResult.error) throw roundsResult.error
@@ -140,6 +220,7 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
   const interventionTypes = new Map<string, number>()
   interventions.forEach((row) => increment(interventionTypes, row.tipo_intervencion))
   const trend = buildDddTrend(dddRows)
+  const aware = buildAwareSummary(dddRows)
   const latestTrend = trend[trend.length - 1]
 
   return {
@@ -169,6 +250,7 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
       totalDdd: dddRows.reduce((sum, row) => sum + toNumber(row.ddd_calculadas), 0),
       totalGrams: dddRows.reduce((sum, row) => sum + toNumber(row.gramos_consumidos), 0),
       latestDdd100: latestTrend?.ddd100 ?? null,
+      aware,
     },
   }
 }

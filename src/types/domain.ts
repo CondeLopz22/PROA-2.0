@@ -123,7 +123,14 @@ export type AntimicrobialCatalogItem = CatalogItem & {
   principio_activo?: string | null
   nombre_generico?: string | null
   codigo_atc?: string | null
+  aware_categoria?: AwareCategory | null
+  aware_nombre_oms?: string | null
+  atc_codigo?: string | null
+  clase_farmacologica?: string | null
+  aware_version?: string | null
 }
+
+export type AwareCategory = 'Access' | 'Watch' | 'Reserve' | 'No aplica' | 'Sin clasificar'
 
 export type OmsDdd = {
   id: UUID

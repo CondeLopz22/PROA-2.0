@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDddTrend } from './analyticsService'
+import { buildAwareSummary, buildDddTrend } from './analyticsService'
 import { dddDataStatus } from './dddService'
 
 describe('buildDddTrend', () => {
@@ -12,6 +12,24 @@ describe('buildDddTrend', () => {
 
     expect(trend[0]).toEqual({ periodo: '2026-08-01', ddd: 75, gramos: 150, ddd100: 3.75 })
     expect(trend[1]).toEqual({ periodo: '2026-09-01', ddd: 10, gramos: 20, ddd100: null })
+  })
+})
+
+describe('buildAwareSummary', () => {
+  it('calcula porcentaje Access excluyendo No aplica y Sin clasificar', () => {
+    const aware = buildAwareSummary([
+      { ips_id: 'ips1', periodo: '2026-08-01', antimicrobiano: 'AMIKACINA', aware_categoria: 'Access', ddd_calculadas: 40 },
+      { ips_id: 'ips1', periodo: '2026-08-01', antimicrobiano: 'MEROPENEM', aware_categoria: 'Watch', ddd_calculadas: 30 },
+      { ips_id: 'ips1', periodo: '2026-08-01', antimicrobiano: 'LINEZOLID', aware_categoria: 'Reserve', ddd_calculadas: 10 },
+      { ips_id: 'ips1', periodo: '2026-08-01', antimicrobiano: 'ACICLOVIR', aware_categoria: 'No aplica', ddd_calculadas: 999 },
+      { ips_id: 'ips1', periodo: '2026-08-01', antimicrobiano: 'PENICILINA', aware_categoria: 'Sin clasificar', ddd_calculadas: 999 },
+    ])
+
+    expect(aware.accessDdd).toBe(40)
+    expect(aware.watchDdd).toBe(30)
+    expect(aware.reserveDdd).toBe(10)
+    expect(aware.denominatorDdd).toBe(80)
+    expect(aware.accessPercent).toBe(50)
   })
 })
 

@@ -86,7 +86,12 @@ export function IndicatorsPage() {
               ['DDD', data.antimicrobials.totalDdd, () => navigate('/ddd')],
               ['DDD100 último periodo', data.antimicrobials.latestDdd100, () => navigate('/ddd')],
               ['Gramos consumidos', data.antimicrobials.totalGrams, () => navigate('/ddd')],
+              ['DDD Access', data.antimicrobials.aware.accessDdd, () => navigate('/ddd?aware=Access')],
+              ['DDD Watch', data.antimicrobials.aware.watchDdd, () => navigate('/ddd?aware=Watch')],
+              ['DDD Reserve', data.antimicrobials.aware.reserveDdd, () => navigate('/ddd?aware=Reserve')],
+              ['% Access', data.antimicrobials.aware.accessPercent, () => navigate('/ddd?aware=Access')],
             ]}
+            bars={data.antimicrobials.aware.distribution}
           />
         </section>
       ) : null}
