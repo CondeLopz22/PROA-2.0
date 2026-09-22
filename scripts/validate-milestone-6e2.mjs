@@ -19,8 +19,7 @@ if (missing.length) {
 
 const url = process.env.VITE_SUPABASE_URL
 const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY
-const now = Date.now()
-const testDocument = `VALIDACION-6E2-${now}`
+const testDocumentPrefix = 'VALIDACION-6E2'
 
 const ok = (label, value = 'OK') => console.log(`✓ ${label}: ${value}`)
 const fail = (label, error) => {
@@ -72,61 +71,128 @@ async function firstAntimicrobial(supabase, category) {
   return result.data
 }
 
-async function createClinicalSeed(ctx, antimicrobial, daysBack) {
+async function createClinicalSeed(ctx, antimicrobial, daysBack, scenario) {
   const service = await firstActiveService(ctx.supabase, ctx.ips.id)
-  const patient = await ctx.supabase
+  const documentNumber = `${testDocumentPrefix}-${scenario}`
+  const existingPatient = await ctx.supabase
     .from('pacientes')
-    .insert({
-      ips_id: ctx.ips.id,
-      tipo_identificacion: 'CC',
-      numero_identificacion: `${testDocument}-${antimicrobial.aware_categoria}`,
-      nombres: 'VALIDACION',
-      apellidos: `6E2 ${antimicrobial.aware_categoria}`,
-      sexo: 'No especificado',
-    })
     .select('*')
-    .single()
-  if (patient.error) fail('Paciente validación 6E2', patient.error)
-  const caseRow = await ctx.supabase
+    .eq('ips_id', ctx.ips.id)
+    .eq('tipo_identificacion', 'CC')
+    .eq('numero_identificacion', documentNumber)
+    .maybeSingle()
+  if (existingPatient.error) fail(`Buscar paciente ${scenario}`, existingPatient.error)
+
+  let patient = existingPatient.data
+  if (!patient) {
+    const createdPatient = await ctx.supabase
+      .from('pacientes')
+      .insert({
+        ips_id: ctx.ips.id,
+        tipo_identificacion: 'CC',
+        numero_identificacion: documentNumber,
+        nombres: 'VALIDACION',
+        apellidos: `6E2 ${scenario}`,
+        sexo: 'No especificado',
+      })
+      .select('*')
+      .single()
+    if (createdPatient.error) fail(`Crear paciente ${scenario}`, createdPatient.error)
+    patient = createdPatient.data
+  }
+
+  const existingCase = await ctx.supabase
     .from('casos_proa')
-    .insert({ ips_id: ctx.ips.id, paciente_id: patient.data.id, fecha_apertura: new Date().toISOString(), estado: 'Activo' })
     .select('*')
-    .single()
-  if (caseRow.error) fail('Caso validación 6E2', caseRow.error)
-  const round = await ctx.supabase
+    .eq('ips_id', ctx.ips.id)
+    .eq('paciente_id', patient.id)
+    .order('fecha_apertura', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (existingCase.error) fail(`Buscar caso ${scenario}`, existingCase.error)
+
+  let caseRow = existingCase.data
+  if (caseRow) {
+    const reopenedCase = await ctx.supabase
+      .from('casos_proa')
+      .update({ estado: 'Activo', fecha_cierre: null, motivo_cierre: null })
+      .eq('id', caseRow.id)
+      .select('*')
+      .single()
+    if (reopenedCase.error) fail(`Reabrir caso ${scenario}`, reopenedCase.error)
+    caseRow = reopenedCase.data
+  } else {
+    const createdCase = await ctx.supabase
+      .from('casos_proa')
+      .insert({ ips_id: ctx.ips.id, paciente_id: patient.id, fecha_apertura: new Date().toISOString(), estado: 'Activo' })
+      .select('*')
+      .single()
+    if (createdCase.error) fail(`Crear caso ${scenario}`, createdCase.error)
+    caseRow = createdCase.data
+  }
+
+  const roundPayload = {
+    ips_id: ctx.ips.id,
+    paciente_id: patient.id,
+    caso_id: caseRow.id,
+    servicio_id: service.id,
+    fecha_hora_ronda: new Date().toISOString(),
+    tipo_valoracion: 'Seguimiento',
+    tipo_terapia: 'Empírica',
+    profesional_id: ctx.user.id,
+    estado: 'Borrador',
+  }
+  const existingRound = await ctx.supabase
     .from('rondas_proa')
-    .insert({
-      ips_id: ctx.ips.id,
-      paciente_id: patient.data.id,
-      caso_id: caseRow.data.id,
-      servicio_id: service.id,
-      fecha_hora_ronda: new Date().toISOString(),
-      tipo_valoracion: 'Seguimiento',
-      tipo_terapia: 'Empírica',
-      profesional_id: ctx.user.id,
-      estado: 'Borrador',
-    })
     .select('*')
-    .single()
-  if (round.error) fail('Ronda validación 6E2', round.error)
+    .eq('ips_id', ctx.ips.id)
+    .eq('paciente_id', patient.id)
+    .eq('caso_id', caseRow.id)
+    .order('fecha_hora_ronda', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (existingRound.error) fail(`Buscar ronda ${scenario}`, existingRound.error)
+
+  const round = existingRound.data
+    ? await ctx.supabase.from('rondas_proa').update(roundPayload).eq('id', existingRound.data.id).select('*').single()
+    : await ctx.supabase.from('rondas_proa').insert(roundPayload).select('*').single()
+  if (round.error) fail(`Preparar ronda ${scenario}`, round.error)
+
   const start = new Date()
   start.setDate(start.getDate() - daysBack)
-  const treatment = await ctx.supabase
+  const treatmentPayload = {
+    ips_id: ctx.ips.id,
+    paciente_id: patient.id,
+    caso_id: caseRow.id,
+    ronda_id: round.data.id,
+    antimicrobiano_id: antimicrobial.id,
+    antimicrobiano: antimicrobial.nombre,
+    fecha_inicio: start.toISOString().slice(0, 10),
+    fecha_fin: null,
+    estado: 'Activo',
+  }
+  const existingTreatment = await ctx.supabase
     .from('tratamientos_antimicrobianos')
-    .insert({
-      ips_id: ctx.ips.id,
-      paciente_id: patient.data.id,
-      caso_id: caseRow.data.id,
-      ronda_id: round.data.id,
-      antimicrobiano_id: antimicrobial.id,
-      antimicrobiano: antimicrobial.nombre,
-      fecha_inicio: start.toISOString().slice(0, 10),
-      estado: 'Activo',
-    })
     .select('*')
-    .single()
-  if (treatment.error) fail('Tratamiento validación 6E2', treatment.error)
-  return { patient: patient.data, caseRow: caseRow.data, round: round.data, treatment: treatment.data }
+    .eq('ips_id', ctx.ips.id)
+    .eq('caso_id', caseRow.id)
+    .eq('antimicrobiano_id', antimicrobial.id)
+    .order('fecha_inicio', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (existingTreatment.error) fail(`Buscar tratamiento ${scenario}`, existingTreatment.error)
+
+  const treatment = existingTreatment.data
+    ? await ctx.supabase
+        .from('tratamientos_antimicrobianos')
+        .update(treatmentPayload)
+        .eq('id', existingTreatment.data.id)
+        .select('*')
+        .single()
+    : await ctx.supabase.from('tratamientos_antimicrobianos').insert(treatmentPayload).select('*').single()
+  if (treatment.error) fail(`Preparar tratamiento ${scenario}`, treatment.error)
+
+  return { patient, caseRow, round: round.data, treatment: treatment.data }
 }
 
 async function upsertFinding(ctx, seed, ruleCode, type, severity) {
@@ -149,7 +215,7 @@ async function upsertFinding(ctx, seed, ruleCode, type, severity) {
       ronda_detectada_id: seed.round.id,
       codigo_regla: ruleCode,
       tipo_hallazgo: type,
-      categoria: ruleCode === 'AUD-07' ? 'AWaRe' : 'Duración',
+      categoria: ['AUD-07', 'AUD-08'].includes(ruleCode) ? 'AWaRe' : 'Duración',
       severidad: severity,
       descripcion: `VALIDACION-6E2 ${ruleCode}`,
       origen: 'Automático',
@@ -179,9 +245,9 @@ ok('ADMIN modifica configuración')
 
 const reserve = await firstAntimicrobial(admin.supabase, 'Reserve')
 const noAplica = await firstAntimicrobial(admin.supabase, 'No aplica')
-const reserveSeed = await createClinicalSeed(admin, reserve, 6)
-const shortSeed = await createClinicalSeed(admin, reserve, 1)
-const noAplicaSeed = await createClinicalSeed(admin, noAplica, 6)
+const reserveSeed = await createClinicalSeed(admin, reserve, 6, 'RESERVE-LONG')
+const shortSeed = await createClinicalSeed(admin, reserve, 1, 'RESERVE-SHORT')
+const noAplicaSeed = await createClinicalSeed(admin, noAplica, 6, 'NO-APLICA')
 
 const aud03 = await upsertFinding(admin, reserveSeed, 'AUD-03', 'Tratamiento prolongado', 'Revisión')
 ok('AUD-03 generado', aud03.id)
@@ -230,19 +296,60 @@ const discard = await admin.supabase
 if (discard.error) fail('Hallazgo descartado', discard.error)
 ok('Hallazgo descartado con motivo')
 
-const intervention = await admin.supabase
+const interventionPayload = {
+  ips_id: admin.ips.id,
+  ronda_id: reserveSeed.round.id,
+  hubo_intervencion: true,
+  tipo_intervencion: 'VALIDACION-6E2',
+  recomendacion: 'Revisión PROA',
+  aceptacion: 'Pendiente',
+}
+const existingIntervention = await admin.supabase
   .from('intervenciones_proa')
-  .insert({
-    ips_id: admin.ips.id,
-    ronda_id: reserveSeed.round.id,
-    hubo_intervencion: true,
-    tipo_intervencion: 'VALIDACION-6E2',
-    recomendacion: 'Revisión PROA',
-    aceptacion: 'Pendiente',
-  })
   .select('*')
-  .single()
+  .eq('ips_id', admin.ips.id)
+  .eq('ronda_id', reserveSeed.round.id)
+  .eq('tipo_intervencion', 'VALIDACION-6E2')
+  .limit(1)
+  .maybeSingle()
+if (existingIntervention.error) fail('Buscar intervención para hallazgo', existingIntervention.error)
+const intervention = existingIntervention.data
+  ? await admin.supabase
+      .from('intervenciones_proa')
+      .update(interventionPayload)
+      .eq('id', existingIntervention.data.id)
+      .select('*')
+      .single()
+  : await admin.supabase.from('intervenciones_proa').insert(interventionPayload).select('*').single()
 if (intervention.error) fail('Intervención para hallazgo', intervention.error)
+
+const existingInterventionTreatment = await admin.supabase
+  .from('intervencion_tratamiento')
+  .select('intervencion_id,tratamiento_id')
+  .eq('intervencion_id', intervention.data.id)
+  .eq('tratamiento_id', reserveSeed.treatment.id)
+  .maybeSingle()
+if (existingInterventionTreatment.error) fail('Buscar relación intervención-tratamiento', existingInterventionTreatment.error)
+if (!existingInterventionTreatment.data) {
+  const interventionTreatment = await admin.supabase
+    .from('intervencion_tratamiento')
+    .insert({ intervencion_id: intervention.data.id, tratamiento_id: reserveSeed.treatment.id })
+  if (interventionTreatment.error) fail('Vincular intervención al tratamiento Reserve', interventionTreatment.error)
+}
+
+const shortTreatmentIntervention = await admin.supabase
+  .from('intervencion_tratamiento')
+  .select('intervencion_id')
+  .eq('tratamiento_id', shortSeed.treatment.id)
+  .limit(1)
+  .maybeSingle()
+if (shortTreatmentIntervention.error) fail('Verificar Reserve sin intervención específica', shortTreatmentIntervention.error)
+if (shortTreatmentIntervention.data) fail('AUD-08 vinculado al tratamiento específico', 'El tratamiento Reserve de control tiene una intervención inesperada')
+const aud08 = await upsertFinding(admin, shortSeed, 'AUD-08', 'Antimicrobiano Reserve sin intervención asociada', 'Prioritario')
+const aud08Again = await upsertFinding(admin, shortSeed, 'AUD-08', 'Antimicrobiano Reserve sin intervención asociada', 'Prioritario')
+if (aud08Again.id !== aud08.id) fail('Idempotencia AUD-08', 'Se creó un duplicado abierto')
+ok('AUD-08 vinculado al tratamiento específico', aud08.id)
+
 const linked = await admin.supabase
   .from('hallazgos_auditoria')
   .update({ intervencion_id: intervention.data.id })
@@ -290,7 +397,11 @@ const dddAware = await admin.supabase.from('mart_ddd').select('aware_categoria,d
 if (dddAware.error) fail('DDD/AWaRe continúa funcionando', dddAware.error)
 ok('DDD/AWaRe continúa funcionando')
 
-await admin.supabase.from('casos_proa').update({ estado: 'Cerrado', fecha_cierre: new Date().toISOString(), motivo_cierre: 'VALIDACION-6E2' }).in('id', [reserveSeed.caseRow.id, shortSeed.caseRow.id, noAplicaSeed.caseRow.id])
+const closedCases = await admin.supabase
+  .from('casos_proa')
+  .update({ estado: 'Cerrado', fecha_cierre: new Date().toISOString(), motivo_cierre: 'VALIDACION-6E2' })
+  .in('id', [reserveSeed.caseRow.id, shortSeed.caseRow.id, noAplicaSeed.caseRow.id])
+if (closedCases.error) fail('Cerrar casos de validación 6E2', closedCases.error)
 await admin.supabase.auth.signOut()
 await infectomag.supabase.auth.signOut()
 await clientUser.supabase.auth.signOut()
