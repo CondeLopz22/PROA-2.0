@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, Database, Home, LogOut, Menu, Users } from 'lucide-react'
+import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, Database, Home, LogOut, Menu, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
@@ -10,6 +10,7 @@ const navigation = [
   { to: '/rondas', label: 'Rondas PROA', icon: ClipboardList },
   { to: '/pacientes', label: 'Pacientes / Registros', icon: Users },
   { to: '/ddd', label: 'Consumo / DDD', icon: Database },
+  { to: '/auditoria', label: 'Auditoría PROA', icon: ShieldCheck },
   { to: '/calidad', label: 'Calidad de Datos', icon: ClipboardCheck },
   { to: '/indicadores', label: 'Indicadores', icon: BarChart3 },
   { to: '/administracion', label: 'Administración', icon: Building2 },

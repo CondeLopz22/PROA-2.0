@@ -211,7 +211,7 @@ function AuditMatrix({ rows }: { rows: ActiveCaseRow[] }) {
                 <td>{finding.tipo_hallazgo}</td>
                 <td><span className="pill">{finding.severidad}</span></td>
                 <td>{finding.estado}</td>
-                <td><Link className="table-action" to={`/pacientes?documento=${row.patient.numero_identificacion}`}>Revisar</Link></td>
+                <td><Link className="table-action" to={`/auditoria?hallazgo=${finding.hallazgo_id ?? finding.id}`}>Revisar</Link></td>
               </tr>
             ))}
           </tbody>
@@ -219,7 +219,7 @@ function AuditMatrix({ rows }: { rows: ActiveCaseRow[] }) {
       </div>
       <div className="mobile-card-list">
         {findings.map(({ row, finding }) => (
-          <Link className="mobile-record-card" key={finding.hallazgo_id ?? finding.id} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
+          <Link className="mobile-record-card" key={finding.hallazgo_id ?? finding.id} to={`/auditoria?hallazgo=${finding.hallazgo_id ?? finding.id}`}>
             <div className="mobile-card-header">
               <strong>{patientDisplayName(row.patient)}</strong>
               <span className="pill">{finding.severidad}</span>

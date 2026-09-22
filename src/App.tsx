@@ -9,6 +9,7 @@ import { useIps } from './features/ips/ipsContext'
 import { canAccessAdministration } from './services/permissionService'
 
 const AntimicrobialUsePage = lazy(() => import('./pages/AntimicrobialUsePage').then((module) => ({ default: module.AntimicrobialUsePage })))
+const AuditPage = lazy(() => import('./pages/AuditPage').then((module) => ({ default: module.AuditPage })))
 const AdministrationPage = lazy(() => import('./pages/AdministrationPage').then((module) => ({ default: module.AdministrationPage })))
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const DataQualityPage = lazy(() => import('./pages/DataQualityPage').then((module) => ({ default: module.DataQualityPage })))
@@ -54,6 +55,7 @@ function ProtectedApp() {
             <Route path="/rondas/:roundId" element={<RoundEditorPage />} />
             <Route path="/pacientes" element={<PatientsPage />} />
             <Route path="/ddd" element={<AntimicrobialUsePage />} />
+            <Route path="/auditoria" element={<AuditPage />} />
             <Route path="/calidad" element={<DataQualityPage />} />
             <Route path="/indicadores" element={<IndicatorsPage />} />
             <Route path="/administracion" element={<AdministrationRoute />} />

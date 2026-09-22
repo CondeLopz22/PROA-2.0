@@ -66,6 +66,18 @@ describe('AppShell role navigation', () => {
     )
 
     expect(screen.getByRole('link', { name: /Administración/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Auditoría PROA/i })).toBeInTheDocument()
+  })
+
+  it('mantiene Auditoría PROA visible para IPS Cliente', () => {
+    mocks.userType = 'ips_cliente'
+    render(
+      <MemoryRouter>
+        <AppShell><div>Contenido</div></AppShell>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /Auditoría PROA/i })).toBeInTheDocument()
   })
 
   it('protege la ruta /administracion para perfiles no administradores', () => {

@@ -96,14 +96,14 @@ export function IndicatorsPage() {
           <IndicatorSection
             title="Auditoría antimicrobiana"
             kpis={[
-              ['Tratamientos auditados', data.audit.auditedTreatments, () => navigate('/')],
-              ['Con hallazgos', data.audit.treatmentsWithFindings, () => navigate('/?filtro=Hallazgos%20abiertos')],
-              ['% tratamientos con hallazgos', data.audit.findingRate, () => navigate('/?filtro=Hallazgos%20abiertos')],
-              ['Hallazgos abiertos', data.audit.openFindings, () => navigate('/?filtro=Hallazgos%20abiertos')],
-              ['Prioritarios', data.audit.priorityFindings, () => navigate('/?filtro=Hallazgos%20prioritarios')],
-              ['Resueltos', data.audit.resolvedFindings, () => navigate('/')],
+              ['Tratamientos auditados', data.audit.auditedTreatments, () => navigate('/auditoria?estado=Todos')],
+              ['Con hallazgos', data.audit.treatmentsWithFindings, () => navigate('/auditoria')],
+              ['% tratamientos con hallazgos', data.audit.findingRate, () => navigate('/auditoria')],
+              ['Hallazgos abiertos', data.audit.openFindings, () => navigate('/auditoria?estado=Abierto')],
+              ['Prioritarios', data.audit.priorityFindings, () => navigate('/auditoria?severidad=Prioritario')],
+              ['Resueltos', data.audit.resolvedFindings, () => navigate('/auditoria?estado=Resuelto')],
               ['% intervenidos', data.audit.intervenedRate, () => navigate('/rondas?filtro=Todas&intervencion=1')],
-              ['% resueltos', data.audit.resolvedRate, () => navigate('/')],
+              ['% resueltos', data.audit.resolvedRate, () => navigate('/auditoria?estado=Resuelto')],
             ]}
             bars={data.audit.byType}
           />

@@ -3,6 +3,7 @@ import type {
   AwareCategory,
   DiagnosisRound,
   Microbiology,
+  Patient,
   ProaAuditConfig,
   ProaAuditFinding,
   ProaAuditRule,
@@ -34,6 +35,13 @@ export type AuditFindingRow = ProaAuditFinding & {
   antimicrobiano?: string | null
   aware_categoria?: AwareCategory | string | null
   aceptacion?: string | null
+}
+
+export type AuditInboxRow = AuditFindingRow & {
+  patient: Patient | null
+  treatment: Treatment | null
+  intervention: ProaIntervention | null
+  treatmentDay: number | null
 }
 
 const inactiveParameterizedRules = new Set(['AUD-04', 'AUD-06', 'AUD-10'])
@@ -139,6 +147,64 @@ export async function getAuditFindings(ipsId: UUID, filters: { status?: string; 
   if (error && auditSchemaUnavailable(error)) return []
   if (error) throw error
   return (data ?? []) as AuditFindingRow[]
+}
+
+export async function getAuditInbox(ipsId: UUID) {
+  const martResult = await supabase
+    .from('mart_auditoria_proa')
+    .select('*')
+    .eq('ips_id', ipsId)
+    .order('fecha_deteccion', { ascending: false })
+    .limit(500)
+  if (martResult.error && auditSchemaUnavailable(martResult.error)) return []
+  if (martResult.error) throw martResult.error
+
+  const martRows = (martResult.data ?? []) as AuditFindingRow[]
+  if (!martRows.length) return []
+
+  const findingIds = unique(martRows.map((row) => row.hallazgo_id ?? row.id))
+  const patientIds = unique(martRows.map((row) => row.paciente_id))
+  const treatmentIds = unique(martRows.map((row) => row.tratamiento_id))
+  const interventionIds = unique(martRows.map((row) => row.intervencion_id))
+  const [findingsResult, patientsResult, treatmentsResult, interventionsResult] = await Promise.all([
+    supabase.from('hallazgos_auditoria').select('*').in('id', findingIds),
+    patientIds.length ? supabase.from('pacientes').select('*').in('id', patientIds) : Promise.resolve({ data: [], error: null }),
+    treatmentIds.length ? supabase.from('tratamientos_antimicrobianos').select('*').in('id', treatmentIds) : Promise.resolve({ data: [], error: null }),
+    interventionIds.length ? supabase.from('intervenciones_proa').select('*').in('id', interventionIds) : Promise.resolve({ data: [], error: null }),
+  ])
+  if (findingsResult.error) throw findingsResult.error
+  if (patientsResult.error) throw patientsResult.error
+  if (treatmentsResult.error) throw treatmentsResult.error
+  if (interventionsResult.error) throw interventionsResult.error
+
+  const findingById = byId((findingsResult.data ?? []) as ProaAuditFinding[])
+  const patientById = byId((patientsResult.data ?? []) as Patient[])
+  const treatmentById = byId((treatmentsResult.data ?? []) as Treatment[])
+  const interventionById = byId((interventionsResult.data ?? []) as ProaIntervention[])
+
+  return martRows.map((martRow) => {
+    const findingId = martRow.hallazgo_id ?? martRow.id
+    const finding = findingById.get(findingId)
+    const treatment = martRow.tratamiento_id ? treatmentById.get(martRow.tratamiento_id) ?? null : null
+    return {
+      ...martRow,
+      ...finding,
+      id: findingId,
+      hallazgo_id: findingId,
+      patient: martRow.paciente_id ? patientById.get(martRow.paciente_id) ?? null : null,
+      treatment,
+      intervention: martRow.intervencion_id ? interventionById.get(martRow.intervencion_id) ?? null : null,
+      treatmentDay: treatmentDay(treatment?.fecha_inicio),
+    } satisfies AuditInboxRow
+  })
+}
+
+function unique(values: Array<UUID | null | undefined>) {
+  return [...new Set(values.filter((value): value is UUID => Boolean(value)))]
+}
+
+function byId<T extends { id: UUID }>(rows: T[]) {
+  return new Map(rows.map((row) => [row.id, row]))
 }
 
 export async function getRoundAuditFindings(roundId: UUID) {
