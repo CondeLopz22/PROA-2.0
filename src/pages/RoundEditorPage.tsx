@@ -66,6 +66,7 @@ import { confirmRoundWithNote, generateProaNote, getLatestRoundNote, saveRoundNo
 import { patientDisplayName } from '../services/patientService'
 import { readableError } from '../services/supabaseErrors'
 import { canWriteOperationalData } from '../services/permissionService'
+import { isReevaluationRule } from '../services/reevaluationService'
 import {
   continueTreatment,
   createTreatment,
@@ -779,6 +780,7 @@ export function RoundEditorPage() {
             await updateAuditFindingStatus({ findingId: finding.id, interventionId: intervention.id, userId: user?.id })
             await load()
           }}
+          onReview={(finding) => navigate(`/auditoria?hallazgo=${finding.id}`)}
           readOnly={readOnly}
         />
         </div>
@@ -828,16 +830,19 @@ function AuditBlock({
   currentInterventionId,
   findings,
   onLinkIntervention,
+  onReview,
   onStatusChange,
   readOnly,
 }: {
   currentInterventionId?: string
   findings: ProaAuditFinding[]
   onLinkIntervention: (finding: ProaAuditFinding) => Promise<void>
+  onReview: (finding: ProaAuditFinding) => void
   onStatusChange: (finding: ProaAuditFinding, status: ProaAuditFinding['estado']) => Promise<void>
   readOnly: boolean
 }) {
   const open = findings.filter((finding) => finding.estado === 'Abierto' || finding.estado === 'En seguimiento')
+  const opportunities = open.filter((finding) => isReevaluationRule(finding.codigo_regla))
   return (
     <article className="panel audit-panel">
       <div className="panel-title">
@@ -849,6 +854,7 @@ function AuditBlock({
       </div>
       {!findings.length ? <p className="muted">Sin hallazgos de auditoría registrados para esta ronda.</p> : null}
       {open.length ? <div className="alert warning">{open.length} hallazgo(s) abierto(s) o en seguimiento.</div> : null}
+      {opportunities.length ? <div className="alert info">{opportunities.length} oportunidad(es) de reevaluación terapéutica pendientes de decisión profesional.</div> : null}
       <div className="subtle-list audit-finding-list">
         {findings.slice(0, 6).map((finding) => (
           <span key={finding.id}>
@@ -861,7 +867,10 @@ function AuditBlock({
             {!readOnly && finding.estado === 'Abierto' ? (
               <button className="button-link table-action" onClick={() => onStatusChange(finding, 'En seguimiento')} type="button">Mantener en seguimiento</button>
             ) : null}
-            {!readOnly && (finding.estado === 'Abierto' || finding.estado === 'En seguimiento') ? (
+            {isReevaluationRule(finding.codigo_regla) ? (
+              <button className="button-link table-action" onClick={() => onReview(finding)} type="button">Revisar oportunidad</button>
+            ) : null}
+            {!readOnly && !isReevaluationRule(finding.codigo_regla) && (finding.estado === 'Abierto' || finding.estado === 'En seguimiento') ? (
               <button className="button-link table-action" onClick={() => onStatusChange(finding, 'Resuelto')} type="button">Resolver</button>
             ) : null}
           </span>

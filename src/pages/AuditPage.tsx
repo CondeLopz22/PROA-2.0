@@ -5,11 +5,16 @@ import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
 import { formatDateTime } from '../lib/date'
 import { getAuditInbox, updateAuditFindingStatus, type AuditInboxRow } from '../services/auditService'
+import {
+  isReevaluationRule,
+  reevaluationDecisionOptions,
+  registerReevaluationDecision,
+} from '../services/reevaluationService'
 import { patientDisplayName } from '../services/patientService'
 import { canWriteOperationalData } from '../services/permissionService'
 import { readableError } from '../services/supabaseErrors'
 import { filterAuditRows, type AuditFilters, type AuditStatusFilter } from '../services/auditFilters'
-import type { AuditFindingSeverity, AuditFindingStatus } from '../types/domain'
+import type { AuditFindingSeverity, AuditFindingStatus, ReevaluationDecisionValue } from '../types/domain'
 
 const statusOptions = ['Activos', 'Abierto', 'En seguimiento', 'Resuelto', 'Descartado', 'Todos'] as const
 
@@ -33,10 +38,13 @@ export function AuditPage() {
     ...defaultFilters,
     status: statusOptions.includes(params.get('estado') as AuditStatusFilter) ? (params.get('estado') as AuditStatusFilter) : 'Activos',
     severity: params.get('severidad') ?? '',
+    type: params.get('tipo') === 'Reevaluación' ? 'Reevaluación terapéutica' : params.get('tipo') ?? '',
   }))
   const [selectedId, setSelectedId] = useState<string | null>(params.get('hallazgo'))
   const [discarding, setDiscarding] = useState(false)
   const [discardReason, setDiscardReason] = useState('')
+  const [decision, setDecision] = useState<ReevaluationDecisionValue | ''>('')
+  const [justification, setJustification] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,7 +92,7 @@ export function AuditPage() {
     services: values(rows.map((row) => row.servicio)),
     antimicrobials: values(rows.map((row) => row.antimicrobiano)),
     aware: values(rows.map((row) => row.aware_categoria)),
-    types: values(rows.map((row) => row.tipo_hallazgo)),
+    types: values(['Reevaluación terapéutica', ...rows.map((row) => row.tipo_hallazgo)]),
   }), [rows])
 
   function patchFilter<K extends keyof AuditFilters>(key: K, value: AuditFilters[K]) {
@@ -95,6 +103,8 @@ export function AuditPage() {
     setSelectedId(null)
     setDiscarding(false)
     setDiscardReason('')
+    setDecision('')
+    setJustification('')
   }
 
   async function changeStatus(status: AuditFindingStatus) {
@@ -113,6 +123,29 @@ export function AuditPage() {
       setDiscarding(false)
       setDiscardReason('')
       setSuccess(`Hallazgo actualizado a ${status}.`)
+    } catch (saveError) {
+      setError(readableError(saveError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveDecision() {
+    if (!selected || !canManage || !decision || !justification.trim()) return
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await registerReevaluationDecision({
+        findingId: selected.id,
+        decision,
+        justification,
+        interventionId: selected.intervencion_id,
+      })
+      await load()
+      setDecision('')
+      setJustification('')
+      setSuccess('Decisión profesional registrada y oportunidad resuelta.')
     } catch (saveError) {
       setError(readableError(saveError))
     } finally {
@@ -183,11 +216,16 @@ export function AuditPage() {
               canManage={canManage}
               discarding={discarding}
               discardReason={discardReason}
+              decision={decision}
               finding={selected}
+              justification={justification}
               saving={saving}
               onClose={closeDetail}
               onDiscard={() => setDiscarding(true)}
               onDiscardReason={setDiscardReason}
+              onDecision={setDecision}
+              onJustification={setJustification}
+              onSaveDecision={saveDecision}
               onStatus={changeStatus}
             />
           </div>
@@ -236,18 +274,24 @@ function AuditInbox({ rows, onReview }: { rows: AuditInboxRow[]; onReview: (id: 
   )
 }
 
-function AuditDetail({ finding, canManage, saving, discarding, discardReason, onClose, onDiscard, onDiscardReason, onStatus }: {
+function AuditDetail({ finding, canManage, saving, discarding, discardReason, decision, justification, onClose, onDiscard, onDiscardReason, onDecision, onJustification, onSaveDecision, onStatus }: {
   finding: AuditInboxRow
   canManage: boolean
   saving: boolean
   discarding: boolean
   discardReason: string
+  decision: ReevaluationDecisionValue | ''
+  justification: string
   onClose: () => void
   onDiscard: () => void
   onDiscardReason: (value: string) => void
+  onDecision: (value: ReevaluationDecisionValue | '') => void
+  onJustification: (value: string) => void
+  onSaveDecision: () => void
   onStatus: (status: AuditFindingStatus) => void
 }) {
   const active = finding.estado === 'Abierto' || finding.estado === 'En seguimiento'
+  const reevaluation = isReevaluationRule(finding.codigo_regla)
   return (
     <section className="panel audit-detail" aria-labelledby="audit-detail-title">
       <div className="subsection-heading">
@@ -269,6 +313,30 @@ function AuditDetail({ finding, canManage, saving, discarding, discardReason, on
         <Detail label="Motivo de descarte" value={finding.motivo_descarte ?? 'No aplica'} />
       </div>
       <div className="audit-description"><strong>Descripción</strong><p>{finding.descripcion || 'Sin descripción disponible.'}</p></div>
+      {finding.relatedTreatments.length > 1 ? (
+        <div className="audit-microbiology-context">
+          <strong>Tratamientos relacionados</strong>
+          <div className="pill-list">
+            {finding.relatedTreatments.map((treatment) => (
+              <span className="pill" key={treatment.id}>{treatment.antimicrobiano ?? 'Antimicrobiano sin nombre'}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {isReevaluationRule(finding.codigo_regla) && finding.microbiologyContext.length ? (
+        <div className="audit-microbiology-context">
+          <strong>Contexto microbiológico</strong>
+          <div className="subtle-list">
+            {finding.microbiologyContext.map((item) => (
+              <span key={item.id}>
+                {item.sample} · {item.result}{item.organism ? ` · ${item.organism}` : ''}
+                {item.sensitivities.length ? <small>Sensibilidad registrada: {item.sensitivities.join(', ')}</small> : null}
+              </span>
+            ))}
+          </div>
+          <p className="muted">Información estructurada para revisión profesional; el sistema no interpreta susceptibilidad ni recomienda tratamiento.</p>
+        </div>
+      ) : null}
       <div className="audit-intervention">
         <strong>Intervención PROA</strong>
         {finding.intervention ? (
@@ -277,15 +345,43 @@ function AuditDetail({ finding, canManage, saving, discarding, discardReason, on
           <div><p className="muted">Este hallazgo no tiene intervención vinculada.</p>{finding.ronda_detectada_id ? <Link className="secondary-button" to={`/rondas/${finding.ronda_detectada_id}#intervencion`}>Ir a la ronda</Link> : null}</div>
         )}
       </div>
+      {finding.reevaluationDecision ? (
+        <div className="audit-decision-summary">
+          <strong>Decisión profesional</strong>
+          <p>{finding.reevaluationDecision.decision}</p>
+          <p>{finding.reevaluationDecision.justificacion}</p>
+          <small>Registrada el {formatDateTime(finding.reevaluationDecision.fecha_decision)}</small>
+        </div>
+      ) : null}
       <div className="button-row">
         {finding.patient ? <Link className="ghost-button" to={`/pacientes?documento=${encodeURIComponent(finding.patient.numero_identificacion)}`}>Ver paciente / caso</Link> : null}
         {finding.ronda_detectada_id ? <Link className="ghost-button" to={`/rondas/${finding.ronda_detectada_id}`}>Ver ronda relacionada</Link> : null}
       </div>
       {canManage && active ? (
         <div className="audit-actions">
+          {reevaluation ? (
+            <div className="reevaluation-decision-form">
+              <h3>Registrar decisión profesional</h3>
+              <p className="muted">La decisión cerrará esta oportunidad como evaluada. No modifica el tratamiento automáticamente.</p>
+              <label>
+                Decisión
+                <select value={decision} onChange={(event) => onDecision(event.target.value as ReevaluationDecisionValue | '')}>
+                  <option value="">Seleccionar</option>
+                  {reevaluationDecisionOptions.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              </label>
+              <label>
+                Justificación (obligatoria)
+                <textarea rows={4} value={justification} onChange={(event) => onJustification(event.target.value)} />
+              </label>
+              <button className="primary-button" disabled={saving || !decision || !justification.trim()} onClick={onSaveDecision} type="button">
+                Registrar decisión
+              </button>
+            </div>
+          ) : null}
           <div className="button-row">
             {finding.estado === 'Abierto' ? <button className="secondary-button" disabled={saving} onClick={() => onStatus('En seguimiento')} type="button"><Clock3 size={16} /> En seguimiento</button> : null}
-            <button className="primary-button" disabled={saving} onClick={() => onStatus('Resuelto')} type="button"><CheckCircle2 size={16} /> Resolver</button>
+            {!reevaluation ? <button className="primary-button" disabled={saving} onClick={() => onStatus('Resuelto')} type="button"><CheckCircle2 size={16} /> Resolver</button> : null}
             <button className="ghost-button" disabled={saving} onClick={onDiscard} type="button">Descartar</button>
           </div>
           {discarding ? (

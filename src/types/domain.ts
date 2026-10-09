@@ -278,6 +278,7 @@ export type ProaAuditConfig = {
   umbral_profilaxis_prolongada_dias?: number | null
   umbral_seguimiento_vencido_dias?: number | null
   umbral_microbiologia_pendiente_dias?: number | null
+  umbral_reevaluacion_favorable_dias?: number | null
   fecha_creacion?: string | null
   fecha_actualizacion?: string | null
 }
@@ -310,8 +311,60 @@ export type ProaAuditFinding = {
   fecha_resolucion?: string | null
   motivo_descarte?: string | null
   usuario_actualizacion?: UUID | null
+  contexto_hash?: string | null
+  fecha_ultima_deteccion?: string | null
   fecha_creacion?: string | null
   fecha_actualizacion?: string | null
+}
+
+export type ReevaluationDecisionValue =
+  | 'Desescalamiento realizado'
+  | 'Optimización diferente'
+  | 'Mantener tratamiento'
+  | 'No aplica'
+
+export type ReevaluationDecision = {
+  id: UUID
+  ips_id: UUID
+  hallazgo_id: UUID
+  decision: ReevaluationDecisionValue
+  justificacion: string
+  profesional_id: UUID
+  fecha_decision: string
+  intervencion_id?: UUID | null
+  fecha_creacion?: string | null
+}
+
+export type ReevaluationMartRow = {
+  oportunidad_id: UUID
+  ips_id: UUID
+  ips?: string | null
+  caso_id: UUID
+  paciente_id: UUID
+  tratamiento_id?: UUID | null
+  ronda_detectada_id?: UUID | null
+  fecha_hora_ronda?: string | null
+  servicio_id?: UUID | null
+  servicio?: string | null
+  codigo_regla: string
+  tipo_hallazgo: string
+  severidad: AuditFindingSeverity
+  estado: AuditFindingStatus
+  contexto_hash?: string | null
+  fecha_deteccion?: string | null
+  fecha_ultima_deteccion?: string | null
+  tratamiento_ids: UUID[]
+  antimicrobianos: string[]
+  aware_categorias: string[]
+  decision_id?: UUID | null
+  decision?: ReevaluationDecisionValue | null
+  justificacion?: string | null
+  profesional_id?: UUID | null
+  profesional?: string | null
+  fecha_decision?: string | null
+  intervencion_id?: UUID | null
+  aceptacion?: string | null
+  dias_hasta_decision?: number | string | null
 }
 
 export type PatientLookupResult = {

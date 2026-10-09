@@ -3,22 +3,33 @@ import type {
   AwareCategory,
   DiagnosisRound,
   Microbiology,
+  MicrobiologySensitivity,
   Patient,
   ProaAuditConfig,
   ProaAuditFinding,
   ProaAuditRule,
   ProaIntervention,
+  ReevaluationDecision,
   RoundProa,
   Treatment,
   UUID,
 } from '../types/domain'
 import { normalizeAntimicrobialName, treatmentDay } from './treatmentService'
+import {
+  buildReevaluationContext,
+  getReevaluationDecisions,
+  shouldCreateDes02,
+  shouldCreateDes03,
+  shouldCreateDes04,
+} from './reevaluationService'
 
 export type AuditFindingDraft = {
   ipsId: UUID
   casoId: UUID
   treatmentId?: UUID | null
+  treatmentIds?: UUID[]
   roundId?: UUID | null
+  contextHash?: string | null
   code: string
   type: string
   category: string
@@ -42,6 +53,15 @@ export type AuditInboxRow = AuditFindingRow & {
   treatment: Treatment | null
   intervention: ProaIntervention | null
   treatmentDay: number | null
+  relatedTreatments: Treatment[]
+  reevaluationDecision: ReevaluationDecision | null
+  microbiologyContext: Array<{
+    id: UUID
+    sample: string
+    result: string
+    organism: string | null
+    sensitivities: string[]
+  }>
 }
 
 const inactiveParameterizedRules = new Set(['AUD-04', 'AUD-06', 'AUD-10'])
@@ -58,7 +78,12 @@ function defaultConfig(ipsId: UUID): ProaAuditConfig {
     umbral_profilaxis_prolongada_dias: null,
     umbral_seguimiento_vencido_dias: null,
     umbral_microbiologia_pendiente_dias: null,
+    umbral_reevaluacion_favorable_dias: null,
   }
+}
+
+function withAware(treatment: Treatment & { catalogo_antimicrobianos?: { aware_categoria?: string | null } | null }) {
+  return { ...treatment, aware_categoria: treatment.catalogo_antimicrobianos?.aware_categoria ?? null }
 }
 
 function isActiveTreatment(treatment: Treatment) {
@@ -164,23 +189,41 @@ export async function getAuditInbox(ipsId: UUID) {
 
   const findingIds = unique(martRows.map((row) => row.hallazgo_id ?? row.id))
   const patientIds = unique(martRows.map((row) => row.paciente_id))
-  const treatmentIds = unique(martRows.map((row) => row.tratamiento_id))
+  const caseIds = unique(martRows.map((row) => row.caso_id))
+  const primaryTreatmentIds = unique(martRows.map((row) => row.tratamiento_id))
   const interventionIds = unique(martRows.map((row) => row.intervencion_id))
-  const [findingsResult, patientsResult, treatmentsResult, interventionsResult] = await Promise.all([
+  const [findingsResult, patientsResult, interventionsResult, decisions, microbiologyResult, relationResult] = await Promise.all([
     supabase.from('hallazgos_auditoria').select('*').in('id', findingIds),
     patientIds.length ? supabase.from('pacientes').select('*').in('id', patientIds) : Promise.resolve({ data: [], error: null }),
-    treatmentIds.length ? supabase.from('tratamientos_antimicrobianos').select('*').in('id', treatmentIds) : Promise.resolve({ data: [], error: null }),
     interventionIds.length ? supabase.from('intervenciones_proa').select('*').in('id', interventionIds) : Promise.resolve({ data: [], error: null }),
+    getReevaluationDecisions(findingIds),
+    caseIds.length ? supabase.from('microbiologia').select('*').in('caso_id', caseIds) : Promise.resolve({ data: [], error: null }),
+    findingIds.length ? supabase.from('hallazgo_tratamiento').select('hallazgo_id,tratamiento_id').in('hallazgo_id', findingIds) : Promise.resolve({ data: [], error: null }),
   ])
   if (findingsResult.error) throw findingsResult.error
   if (patientsResult.error) throw patientsResult.error
-  if (treatmentsResult.error) throw treatmentsResult.error
   if (interventionsResult.error) throw interventionsResult.error
+  if (microbiologyResult.error) throw microbiologyResult.error
+  if (relationResult.error && relationResult.error.code !== 'PGRST205' && relationResult.error.code !== '42P01') throw relationResult.error
+  const relations = (relationResult.data ?? []) as Array<{ hallazgo_id: UUID; tratamiento_id: UUID }>
+  const treatmentIds = unique([...primaryTreatmentIds, ...relations.map((row) => row.tratamiento_id)])
+  const treatmentsResult = treatmentIds.length
+    ? await supabase.from('tratamientos_antimicrobianos').select('*').in('id', treatmentIds)
+    : { data: [], error: null }
+  if (treatmentsResult.error) throw treatmentsResult.error
+  const microbiologyRows = (microbiologyResult.data ?? []) as Microbiology[]
+  const microbiologyIds = microbiologyRows.map((row) => row.id)
+  const sensitivityResult = microbiologyIds.length
+    ? await supabase.from('sensibilidad_microbiologica').select('*').in('muestra_id', microbiologyIds)
+    : { data: [], error: null }
+  if (sensitivityResult.error) throw sensitivityResult.error
+  const sensitivityRows = (sensitivityResult.data ?? []) as MicrobiologySensitivity[]
 
   const findingById = byId((findingsResult.data ?? []) as ProaAuditFinding[])
   const patientById = byId((patientsResult.data ?? []) as Patient[])
   const treatmentById = byId((treatmentsResult.data ?? []) as Treatment[])
   const interventionById = byId((interventionsResult.data ?? []) as ProaIntervention[])
+  const decisionByFindingId = new Map(decisions.map((decision) => [decision.hallazgo_id, decision]))
 
   return martRows.map((martRow) => {
     const findingId = martRow.hallazgo_id ?? martRow.id
@@ -193,8 +236,24 @@ export async function getAuditInbox(ipsId: UUID) {
       hallazgo_id: findingId,
       patient: martRow.paciente_id ? patientById.get(martRow.paciente_id) ?? null : null,
       treatment,
+      relatedTreatments: relations
+        .filter((relation) => relation.hallazgo_id === findingId)
+        .map((relation) => treatmentById.get(relation.tratamiento_id))
+        .filter(Boolean) as Treatment[],
       intervention: martRow.intervencion_id ? interventionById.get(martRow.intervencion_id) ?? null : null,
       treatmentDay: treatmentDay(treatment?.fecha_inicio),
+      reevaluationDecision: decisionByFindingId.get(findingId) ?? null,
+      microbiologyContext: microbiologyRows
+        .filter((row) => row.caso_id === martRow.caso_id && row.resultado_general && row.resultado_general !== 'Pendiente')
+        .map((row) => ({
+          id: row.id,
+          sample: row.tipo_muestra ?? 'Muestra',
+          result: row.resultado_general ?? 'Sin resultado',
+          organism: row.microorganismo ?? null,
+          sensitivities: sensitivityRows
+            .filter((item) => item.muestra_id === row.id && item.resultado && item.resultado !== 'No disponible')
+            .map((item) => `${item.antimicrobiano ?? 'Antimicrobiano'}: ${item.resultado}`),
+        })),
     } satisfies AuditInboxRow
   })
 }
@@ -205,6 +264,18 @@ function unique(values: Array<UUID | null | undefined>) {
 
 function byId<T extends { id: UUID }>(rows: T[]) {
   return new Map(rows.map((row) => [row.id, row]))
+}
+
+async function linkFindingTreatments(findingId: UUID, treatmentIds: UUID[] = []) {
+  if (!treatmentIds.length) return
+  const { error } = await supabase.from('hallazgo_tratamiento').upsert(
+    Array.from(new Set(treatmentIds)).map((treatmentId) => ({
+      hallazgo_id: findingId,
+      tratamiento_id: treatmentId,
+    })),
+    { onConflict: 'hallazgo_id,tratamiento_id', ignoreDuplicates: true },
+  )
+  if (error) throw error
 }
 
 export async function getRoundAuditFindings(roundId: UUID) {
@@ -219,9 +290,35 @@ export async function getRoundAuditFindings(roundId: UUID) {
 }
 
 export async function saveAuditFinding(draft: AuditFindingDraft) {
+  if (draft.contextHash) {
+    const sameContext = await supabase
+      .from('hallazgos_auditoria')
+      .select('*')
+      .eq('ips_id', draft.ipsId)
+      .eq('caso_id', draft.casoId)
+      .eq('codigo_regla', draft.code)
+      .eq('contexto_hash', draft.contextHash)
+      .limit(20)
+    if (sameContext.error) throw sameContext.error
+    const exact = (sameContext.data ?? []).find((row) =>
+      draft.treatmentId ? row.tratamiento_id === draft.treatmentId : !row.tratamiento_id,
+    )
+    if (exact) {
+      const refreshed = await supabase
+        .from('hallazgos_auditoria')
+        .update({ fecha_ultima_deteccion: new Date().toISOString() })
+        .eq('id', exact.id)
+        .select('*')
+        .single()
+      if (refreshed.error) throw refreshed.error
+      await linkFindingTreatments(exact.id as UUID, draft.treatmentIds)
+      return refreshed.data as ProaAuditFinding
+    }
+  }
+
   const existing = await supabase
     .from('hallazgos_auditoria')
-    .select('id,estado,tratamiento_id')
+    .select('id,estado,tratamiento_id,contexto_hash')
     .eq('ips_id', draft.ipsId)
     .eq('caso_id', draft.casoId)
     .eq('codigo_regla', draft.code)
@@ -238,12 +335,15 @@ export async function saveAuditFinding(draft: AuditFindingDraft) {
         descripcion: draft.description,
         severidad: draft.severity,
         ronda_detectada_id: draft.roundId ?? null,
+        contexto_hash: duplicate.contexto_hash ?? draft.contextHash ?? null,
+        fecha_ultima_deteccion: new Date().toISOString(),
         fecha_actualizacion: new Date().toISOString(),
       })
       .eq('id', duplicate.id)
       .select('*')
       .single()
     if (error) throw error
+    await linkFindingTreatments(data.id as UUID, draft.treatmentIds)
     return data as ProaAuditFinding
   }
 
@@ -261,11 +361,15 @@ export async function saveAuditFinding(draft: AuditFindingDraft) {
       descripcion: draft.description,
       origen: draft.origin ?? 'Automático',
       estado: 'Abierto',
+      contexto_hash: draft.contextHash ?? null,
+      fecha_ultima_deteccion: new Date().toISOString(),
     })
     .select('*')
     .single()
   if (error) throw error
-  return data as ProaAuditFinding
+  const finding = data as ProaAuditFinding
+  await linkFindingTreatments(finding.id, draft.treatmentIds)
+  return finding
 }
 
 export async function updateAuditFindingStatus({
@@ -332,15 +436,18 @@ export async function evaluateCaseAudit({
   const latestRound = rounds[0] ?? null
   const detectionRoundId = roundId ?? latestRound?.id ?? null
   const microbiology = (microbiologyResult.data ?? []) as Microbiology[]
+  const microbiologyIds = microbiology.map((row) => row.id)
 
-  const [diagnosesResult, interventionsResult, interventionTreatmentResult] = await Promise.all([
+  const [diagnosesResult, interventionsResult, interventionTreatmentResult, sensitivityResult] = await Promise.all([
     roundIds.length ? supabase.from('diagnosticos_ronda').select('*').in('ronda_id', roundIds) : Promise.resolve({ data: [], error: null }),
     roundIds.length ? supabase.from('intervenciones_proa').select('*').eq('ips_id', ipsId).in('ronda_id', roundIds) : Promise.resolve({ data: [], error: null }),
     activeTreatmentIds.length ? supabase.from('intervencion_tratamiento').select('intervencion_id,tratamiento_id').in('tratamiento_id', activeTreatmentIds) : Promise.resolve({ data: [], error: null }),
+    microbiologyIds.length ? supabase.from('sensibilidad_microbiologica').select('*').in('muestra_id', microbiologyIds) : Promise.resolve({ data: [], error: null }),
   ])
   if (diagnosesResult.error) throw diagnosesResult.error
   if (interventionsResult.error) throw interventionsResult.error
   if (interventionTreatmentResult.error) throw interventionTreatmentResult.error
+  if (sensitivityResult.error) throw sensitivityResult.error
   const diagnoses = (diagnosesResult.data ?? []) as DiagnosisRound[]
   const interventions = (interventionsResult.data ?? []) as ProaIntervention[]
   const proaInterventionIds = new Set(interventions.filter((intervention) => intervention.hubo_intervencion).map((intervention) => intervention.id))
@@ -349,6 +456,7 @@ export async function evaluateCaseAudit({
       .filter((relation) => relation.intervencion_id && relation.tratamiento_id && proaInterventionIds.has(relation.intervencion_id))
       .map((relation) => relation.tratamiento_id as UUID),
   )
+  const sensitivities = (sensitivityResult.data ?? []) as MicrobiologySensitivity[]
   const drafts: AuditFindingDraft[] = []
 
   for (const treatment of activeTreatments) {
@@ -380,7 +488,67 @@ export async function evaluateCaseAudit({
 
   if (activeRules.has('AUD-05') && latestRound?.tipo_terapia === 'Empírica' && hasAvailableMicrobiology(microbiology)) {
     const rule = ruleDraft(activeRules.get('AUD-05'), { code: 'AUD-05', type: 'Terapia empírica con microbiología disponible', category: 'Microbiología', severity: 'Revisión' })
-    drafts.push({ ipsId, casoId, roundId: detectionRoundId, ...rule, description: 'Existe microbiología con resultado disponible y la terapia continúa registrada como empírica. Requiere revisión.' })
+    drafts.push({
+      ipsId,
+      casoId,
+      treatmentIds: activeTreatmentIds,
+      roundId: detectionRoundId,
+      contextHash: buildReevaluationContext({ code: 'AUD-05', treatments: activeTreatments.map(withAware), round: latestRound, microbiology, sensitivities }),
+      ...rule,
+      description: 'Existe microbiología con resultado disponible y la terapia continúa registrada como empírica. Requiere revisión.',
+    })
+  }
+
+  if (activeRules.has('DES-02')) {
+    activeTreatments.forEach((treatment) => {
+      const aware = treatment.catalogo_antimicrobianos?.aware_categoria
+      if (!shouldCreateDes02(aware, sensitivities)) return
+      const rule = ruleDraft(activeRules.get('DES-02'), { code: 'DES-02', type: 'Watch/Reserve con antibiograma disponible', category: 'Reevaluación terapéutica', severity: 'Revisión' })
+      drafts.push({
+        ipsId,
+        casoId,
+        treatmentId: treatment.id,
+        treatmentIds: [treatment.id],
+        roundId: detectionRoundId,
+        contextHash: buildReevaluationContext({ code: 'DES-02', treatments: [withAware(treatment)], round: latestRound, microbiology, sensitivities }),
+        ...rule,
+        description: `${treatment.antimicrobiano ?? 'Tratamiento Watch/Reserve'} continúa activo y el caso tiene antibiograma disponible. Requiere reevaluación profesional.`,
+      })
+    })
+  }
+
+  if (activeRules.has('DES-03') && shouldCreateDes03(activeTreatments.length, microbiology)) {
+    const rule = ruleDraft(activeRules.get('DES-03'), { code: 'DES-03', type: 'Terapia combinada con microbiología disponible', category: 'Reevaluación terapéutica', severity: 'Revisión' })
+    drafts.push({
+      ipsId,
+      casoId,
+      treatmentIds: activeTreatmentIds,
+      roundId: detectionRoundId,
+      contextHash: buildReevaluationContext({ code: 'DES-03', treatments: activeTreatments.map(withAware), round: latestRound, microbiology, sensitivities }),
+      ...rule,
+      description: `${activeTreatments.length} tratamientos antimicrobianos continúan activos y existe microbiología disponible. Requiere reevaluación profesional.`,
+    })
+  }
+
+  const favorableThreshold = config.umbral_reevaluacion_favorable_dias
+  if (activeRules.has('DES-04')) {
+    activeTreatments.forEach((treatment) => {
+      const aware = treatment.catalogo_antimicrobianos?.aware_categoria
+      if (!treatment.fecha_inicio) return
+      const day = treatmentDay(treatment.fecha_inicio, latestRound.fecha_hora_ronda)
+      if (!shouldCreateDes04({ category: aware, evolution: latestRound?.evolucion_clinica, day, threshold: favorableThreshold })) return
+      const rule = ruleDraft(activeRules.get('DES-04'), { code: 'DES-04', type: 'Watch/Reserve con mejoría y duración superior al umbral', category: 'Reevaluación terapéutica', severity: 'Revisión' })
+      drafts.push({
+        ipsId,
+        casoId,
+        treatmentId: treatment.id,
+        treatmentIds: [treatment.id],
+        roundId: detectionRoundId,
+        contextHash: buildReevaluationContext({ code: 'DES-04', treatments: [withAware(treatment)], round: latestRound, microbiology, sensitivities, threshold: favorableThreshold }),
+        ...rule,
+        description: `${treatment.antimicrobiano ?? 'Tratamiento Watch/Reserve'} está en día ${day}, con evolución en mejoría y umbral institucional de ${favorableThreshold} días. Requiere reevaluación profesional.`,
+      })
+    })
   }
 
   if (activeRules.has('AUD-09')) {

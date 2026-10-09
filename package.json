@@ -22,6 +22,7 @@
     "validate:6d1": "node scripts/validate-milestone-6d1.mjs",
     "validate:6e1": "node scripts/validate-milestone-6e1.mjs",
     "validate:6e2": "node scripts/validate-milestone-6e2.mjs",
+    "validate:6e3": "node scripts/validate-milestone-6e3.mjs",
     "test:ui": "vitest run --environment jsdom",
     "migrate:pilot": "node scripts/migrate-pilot.mjs",
     "preview": "vite preview"

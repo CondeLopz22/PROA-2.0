@@ -21,7 +21,8 @@ export function filterAuditRows(rows: AuditInboxRow[], filters: AuditFilters) {
     if (filters.service && row.servicio !== filters.service) return false
     if (filters.antimicrobial && row.antimicrobiano !== filters.antimicrobial) return false
     if (filters.aware && row.aware_categoria !== filters.aware) return false
-    if (filters.type && row.tipo_hallazgo !== filters.type) return false
+    if (filters.type === 'Reevaluación terapéutica' && !['AUD-05', 'DES-02', 'DES-03', 'DES-04'].includes(row.codigo_regla)) return false
+    if (filters.type && filters.type !== 'Reevaluación terapéutica' && row.tipo_hallazgo !== filters.type) return false
     if (!search) return true
     return normalize([
       row.patient?.nombres,

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   userType: 'infectomag' as ProductUserType,
   getAuditInbox: vi.fn(),
   updateAuditFindingStatus: vi.fn(),
+  registerReevaluationDecision: vi.fn(),
 }))
 
 vi.mock('../features/auth/authContext', () => ({
@@ -25,6 +26,12 @@ vi.mock('../features/ips/ipsContext', () => ({
 vi.mock('../services/auditService', () => ({
   getAuditInbox: mocks.getAuditInbox,
   updateAuditFindingStatus: mocks.updateAuditFindingStatus,
+}))
+
+vi.mock('../services/reevaluationService', () => ({
+  isReevaluationRule: (code: string) => ['AUD-05', 'DES-02', 'DES-03', 'DES-04'].includes(code),
+  reevaluationDecisionOptions: ['Desescalamiento realizado', 'Optimización diferente', 'Mantener tratamiento', 'No aplica'],
+  registerReevaluationDecision: mocks.registerReevaluationDecision,
 }))
 
 const rows: AuditInboxRow[] = [
@@ -62,6 +69,18 @@ const rows: AuditInboxRow[] = [
     antimicrobiano: 'AMIKACINA',
     tipo_hallazgo: 'Fecha revisada',
   }),
+  finding({
+    id: 'finding-reevaluation',
+    codigo_regla: 'DES-03',
+    estado: 'Abierto',
+    patient: patient('patient-d', 'Diana', 'Decisión', '4004'),
+    tipo_hallazgo: 'Terapia combinada con microbiología disponible',
+    relatedTreatments: [
+      { id: 'treatment-watch', antimicrobiano: 'MEROPENEM', estado: 'Activo' },
+      { id: 'treatment-access', antimicrobiano: 'AMIKACINA', estado: 'Activo' },
+    ],
+    microbiologyContext: [{ id: 'sample-1', sample: 'Hemocultivo', result: 'Positivo', organism: 'E. coli', sensitivities: ['MEROPENEM: Sensible'] }],
+  }),
 ]
 
 describe('AuditPage', () => {
@@ -73,6 +92,7 @@ describe('AuditPage', () => {
       estado: status,
       motivo_descarte: discardReason ?? null,
     }))
+    mocks.registerReevaluationDecision.mockResolvedValue({ id: 'decision-1' })
   })
 
   afterEach(() => {
@@ -152,6 +172,28 @@ describe('AuditPage', () => {
     expect(screen.queryByRole('button', { name: /Resolver/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Descartar' })).not.toBeInTheDocument()
   })
+
+  it('registra una decisión profesional con justificación y muestra contexto microbiológico', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const buttons = await screen.findAllByRole('button', { name: 'Revisar' })
+    await user.click(buttons[buttons.length - 1])
+
+    const detail = screen.getByRole('heading', { name: 'Terapia combinada con microbiología disponible' }).closest('section') as HTMLElement
+    expect(screen.getByText(/Hemocultivo · Positivo · E. coli/)).toBeInTheDocument()
+    expect(screen.getByText(/MEROPENEM: Sensible/)).toBeInTheDocument()
+    expect(within(detail).getByText('AMIKACINA')).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Decisión'), 'Mantener tratamiento')
+    await user.type(screen.getByLabelText('Justificación (obligatoria)'), 'Conducta revisada por el equipo PROA.')
+    await user.click(screen.getByRole('button', { name: 'Registrar decisión' }))
+
+    await waitFor(() => expect(mocks.registerReevaluationDecision).toHaveBeenCalledWith(expect.objectContaining({
+      findingId: 'finding-reevaluation',
+      decision: 'Mantener tratamiento',
+      justification: 'Conducta revisada por el equipo PROA.',
+    })))
+    expect(mocks.updateAuditFindingStatus).not.toHaveBeenCalledWith(expect.objectContaining({ findingId: 'finding-reevaluation', status: 'Resuelto' }))
+  })
 })
 
 describe('filterAuditRows', () => {
@@ -201,6 +243,9 @@ function finding(overrides: Partial<AuditInboxRow>): AuditInboxRow {
     treatment: { id: 'treatment-1', fecha_inicio: '2026-09-15', estado: 'Activo' },
     intervention: null,
     treatmentDay: 6,
+    relatedTreatments: [],
+    reevaluationDecision: null,
+    microbiologyContext: [],
     ...overrides,
   }
 }

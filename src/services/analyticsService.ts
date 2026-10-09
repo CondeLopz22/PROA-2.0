@@ -79,6 +79,10 @@ export type NativeIndicators = {
     byType: Array<{ label: string; value: number }>
     bySeverity: Array<{ label: string; value: number }>
     byAware: Array<{ label: string; value: number }>
+    reevaluationOpen: number
+    reevaluationDecided: number
+    reevaluationWithInterventionRate: number | null
+    decisionsByType: Array<{ label: string; value: number }>
   }
 }
 
@@ -210,7 +214,7 @@ export async function getDddMartRows({
 }
 
 export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators> {
-  const [casesResult, roundsResult, interventionsResult, microbiologyResult, dddResult, treatmentsResult, auditResult] = await Promise.all([
+  const [casesResult, roundsResult, interventionsResult, microbiologyResult, dddResult, treatmentsResult, auditResult, reevaluationResult] = await Promise.all([
     supabase.from('mart_casos_proa').select('caso_id,estado').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_rondas_proa').select('ronda_id,tipo_valoracion,hubo_intervencion').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_intervenciones_proa').select('intervencion_id,tipo_intervencion,aceptacion').eq('ips_id', ipsId).limit(1000),
@@ -218,6 +222,7 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
     supabase.from('mart_ddd').select('periodo,servicio,servicio_id,antimicrobiano_id,antimicrobiano,aware_categoria,ddd_calculadas,ddd_100_camas_dia,gramos_consumidos,camas_dia_ocupadas').eq('ips_id', ipsId).limit(1000),
     supabase.from('tratamientos_antimicrobianos').select('id').eq('ips_id', ipsId).limit(1000),
     supabase.from('mart_auditoria_proa').select('hallazgo_id,tratamiento_id,tipo_hallazgo,severidad,estado,intervencion_id,aware_categoria').eq('ips_id', ipsId).limit(1000),
+    supabase.from('mart_reevaluacion_terapeutica').select('oportunidad_id,codigo_regla,estado,decision,intervencion_id').eq('ips_id', ipsId).limit(1000),
   ])
   if (casesResult.error) throw casesResult.error
   if (roundsResult.error) throw roundsResult.error
@@ -226,6 +231,7 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
   if (dddResult.error) throw dddResult.error
   if (treatmentsResult.error) throw treatmentsResult.error
   if (auditResult.error && auditResult.error.code !== 'PGRST205') throw auditResult.error
+  if (reevaluationResult.error && !['PGRST205', '42P01'].includes(reevaluationResult.error.code)) throw reevaluationResult.error
 
   const rounds = roundsResult.data ?? []
   const interventions = interventionsResult.data ?? []
@@ -248,6 +254,12 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
     intervencion_id?: UUID | null
     aware_categoria?: string | null
   }>
+  const reevaluationRows = (reevaluationResult.data ?? []) as Array<{
+    oportunidad_id?: UUID | null
+    estado?: string | null
+    decision?: string | null
+    intervencion_id?: UUID | null
+  }>
   const auditedTreatments = (treatmentsResult.data ?? []).length
   const treatmentsWithFindings = new Set(auditRows.map((row) => row.tratamiento_id).filter(Boolean)).size
   const openAudit = auditRows.filter((row) => row.estado === 'Abierto' || row.estado === 'En seguimiento')
@@ -255,11 +267,15 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
   const auditTypes = new Map<string, number>()
   const auditSeverity = new Map<string, number>()
   const auditAware = new Map<string, number>()
+  const reevaluationDecisions = new Map<string, number>()
   auditRows.forEach((row) => {
     increment(auditTypes, row.tipo_hallazgo)
     increment(auditSeverity, row.severidad)
     increment(auditAware, row.aware_categoria)
   })
+  reevaluationRows.forEach((row) => increment(reevaluationDecisions, row.decision))
+  const reevaluationDecided = reevaluationRows.filter((row) => row.decision).length
+  const reevaluationWithIntervention = reevaluationRows.filter((row) => row.intervencion_id).length
 
   return {
     activity: {
@@ -302,6 +318,10 @@ export async function getNativeIndicators(ipsId: UUID): Promise<NativeIndicators
       byType: top(auditTypes),
       bySeverity: top(auditSeverity),
       byAware: top(auditAware),
+      reevaluationOpen: reevaluationRows.filter((row) => row.estado === 'Abierto' || row.estado === 'En seguimiento').length,
+      reevaluationDecided,
+      reevaluationWithInterventionRate: reevaluationRows.length ? (reevaluationWithIntervention / reevaluationRows.length) * 100 : null,
+      decisionsByType: top(reevaluationDecisions),
     },
   }
 }

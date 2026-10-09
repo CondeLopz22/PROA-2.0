@@ -104,8 +104,11 @@ export function IndicatorsPage() {
               ['Resueltos', data.audit.resolvedFindings, () => navigate('/auditoria?estado=Resuelto')],
               ['% intervenidos', data.audit.intervenedRate, () => navigate('/rondas?filtro=Todas&intervencion=1')],
               ['% resueltos', data.audit.resolvedRate, () => navigate('/auditoria?estado=Resuelto')],
+              ['Reevaluaciones pendientes', data.audit.reevaluationOpen, () => navigate('/auditoria?tipo=Reevaluación')],
+              ['Decisiones registradas', data.audit.reevaluationDecided, () => navigate('/auditoria?estado=Resuelto')],
+              ['% reevaluaciones con intervención', data.audit.reevaluationWithInterventionRate, () => navigate('/auditoria?tipo=Reevaluación')],
             ]}
-            bars={data.audit.byType}
+            bars={data.audit.decisionsByType.length ? data.audit.decisionsByType : data.audit.byType}
           />
         </section>
       ) : null}

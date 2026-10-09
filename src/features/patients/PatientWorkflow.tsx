@@ -15,7 +15,8 @@ import {
 import { createEmptyRound } from '../../services/roundService'
 import { readableError } from '../../services/supabaseErrors'
 import { canWriteOperationalData } from '../../services/permissionService'
-import type { CaseProa, Patient, PatientLookupResult, RoundProa, ServiceIps } from '../../types/domain'
+import { getCaseReevaluation } from '../../services/reevaluationService'
+import type { CaseProa, Patient, PatientLookupResult, ReevaluationMartRow, RoundProa, ServiceIps } from '../../types/domain'
 
 type Mode = 'round' | 'records'
 
@@ -258,6 +259,7 @@ function PatientSummary({
   const [cama, setCama] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [reevaluations, setReevaluations] = useState<ReevaluationMartRow[]>([])
 
   const allCases = useMemo(
     () => [lookup.activeCase, ...lookup.historicalCases].filter(Boolean) as CaseProa[],
@@ -280,6 +282,15 @@ function PatientSummary({
       mounted = false
     }
   }, [ipsId])
+
+  useEffect(() => {
+    let mounted = true
+    const request = selectedCase?.id ? getCaseReevaluation(selectedCase.id) : Promise.resolve([])
+    request
+      .then((rows) => { if (mounted) setReevaluations(rows) })
+      .catch(() => { if (mounted) setReevaluations([]) })
+    return () => { mounted = false }
+  }, [selectedCase?.id])
 
   async function createNewCase() {
     if (lookup.activeCase) {
@@ -384,6 +395,23 @@ function PatientSummary({
           <p className="muted">Paciente sin casos PROA registrados.</p>
         )}
       </div>
+
+      {selectedCase ? (
+        <div className="subsection">
+          <h3>Reevaluación terapéutica</h3>
+          {reevaluations.length ? (
+            <div className="subtle-list">
+              {reevaluations.slice(0, 8).map((row) => (
+                <span key={row.oportunidad_id}>
+                  <strong>{row.codigo_regla}</strong> · {row.tipo_hallazgo} · {row.estado}
+                  <small>{row.decision ? `Decisión: ${row.decision}` : 'Pendiente de decisión profesional'}</small>
+                </span>
+              ))}
+              <Link className="button-link" to="/auditoria">Abrir Auditoría PROA</Link>
+            </div>
+          ) : <p className="muted">Sin oportunidades de reevaluación registradas para el caso seleccionado.</p>}
+        </div>
+      ) : null}
 
       {mode === 'round' && canWrite ? (
         <div className="round-actions">

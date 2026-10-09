@@ -615,6 +615,7 @@ function AuditConfigPanel({ activeIpsId, context }: { activeIpsId: UUID; context
         umbral_profilaxis_prolongada_dias: config.umbral_profilaxis_prolongada_dias,
         umbral_seguimiento_vencido_dias: config.umbral_seguimiento_vencido_dias,
         umbral_microbiologia_pendiente_dias: config.umbral_microbiologia_pendiente_dias,
+        umbral_reevaluacion_favorable_dias: config.umbral_reevaluacion_favorable_dias,
       })
       await load()
     } catch (saveError) {
@@ -651,6 +652,11 @@ function AuditConfigPanel({ activeIpsId, context }: { activeIpsId: UUID; context
           <label>
             Microbiología pendiente (días)
             <input disabled={!canManage || saving} min="1" type="number" value={config.umbral_microbiologia_pendiente_dias ?? ''} onChange={(event) => setNumeric('umbral_microbiologia_pendiente_dias', event.target.value)} />
+          </label>
+          <label>
+            Reevaluación Watch/Reserve con mejoría (días)
+            <input disabled={!canManage || saving} min="1" type="number" value={config.umbral_reevaluacion_favorable_dias ?? ''} onChange={(event) => setNumeric('umbral_reevaluacion_favorable_dias', event.target.value)} />
+            <small>DES-04 permanece inactiva mientras este valor esté vacío.</small>
           </label>
         </div>
       ) : <p className="muted">Configuración de auditoría pendiente de migración.</p>}

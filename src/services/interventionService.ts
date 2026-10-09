@@ -158,48 +158,46 @@ export async function replaceRoundIntervention({
   const existing = await supabase.from('intervenciones_proa').select('id').eq('ronda_id', round.id)
   if (existing.error) throw existing.error
   const existingIds = (existing.data ?? []).map((item) => item.id as UUID)
-  if (existingIds.length) {
-    const relationDelete = await supabase.from('intervencion_tratamiento').delete().in('intervencion_id', existingIds)
-    if (relationDelete.error) throw relationDelete.error
-    const interventionDelete = await supabase.from('intervenciones_proa').delete().eq('ronda_id', round.id)
-    if (interventionDelete.error) throw interventionDelete.error
+  if (!draft.huboIntervencion) {
+    if (!existingIds.length) return null
+    throw new Error('Para conservar la trazabilidad, una intervención guardada no puede eliminarse desde la ronda.')
   }
-
-  if (!draft.huboIntervencion) return null
   if (!round.ips_id || !round.id) throw new Error('La ronda no tiene contexto de intervención completo.')
   const hasIntervention = draft.huboIntervencion === 'Sí'
-
-  const { data, error } = await supabase
-    .from('intervenciones_proa')
-    .insert({
-      ips_id: round.ips_id,
-      ronda_id: round.id,
-      hubo_intervencion: hasIntervention,
-      tipo_intervencion_id: hasIntervention ? draft.tipoIntervencionId || null : null,
-      tipo_intervencion: hasIntervention ? draft.tipoIntervencion.trim() || null : null,
-      motivo_no_intervencion: hasIntervention ? null : draft.motivoNoIntervencion || null,
-      descripcion_motivo_no_intervencion:
-        !hasIntervention && draft.motivoNoIntervencion === 'Otro' ? draft.descripcionMotivoNoIntervencion.trim() || null : null,
-      origen_intervencion: hasIntervention ? draft.origenIntervencion || null : null,
-      recomendacion: hasIntervention ? draft.recomendacion || null : null,
-      descripcion_recomendacion: hasIntervention ? draft.descripcionRecomendacion.trim() || null : null,
-      aceptacion: hasIntervention ? draft.aceptacion || null : null,
-      motivo_no_aceptacion:
-        hasIntervention && (draft.aceptacion === 'No' || draft.aceptacion === 'Parcialmente')
-          ? draft.motivoNoAceptacion.trim() || null
-          : null,
-      cumplimiento_guia: draft.cumplimientoGuia || null,
-      motivo_no_cumplimiento:
-        draft.cumplimientoGuia === 'No cumple' ? draft.motivoNoCumplimiento.trim() || null : null,
-      dias_ahorrados: hasIntervention ? draft.diasAhorrados : null,
-      requiere_seguimiento: draft.requiereSeguimiento,
-      fecha_seguimiento: draft.requiereSeguimiento && draft.fechaSeguimiento ? draft.fechaSeguimiento : null,
-      motivo_seguimiento: draft.requiereSeguimiento ? draft.motivoSeguimiento.trim() || null : null,
-    })
-    .select('*')
-    .single()
+  const payload = {
+    ips_id: round.ips_id,
+    ronda_id: round.id,
+    hubo_intervencion: hasIntervention,
+    tipo_intervencion_id: hasIntervention ? draft.tipoIntervencionId || null : null,
+    tipo_intervencion: hasIntervention ? draft.tipoIntervencion.trim() || null : null,
+    motivo_no_intervencion: hasIntervention ? null : draft.motivoNoIntervencion || null,
+    descripcion_motivo_no_intervencion:
+      !hasIntervention && draft.motivoNoIntervencion === 'Otro' ? draft.descripcionMotivoNoIntervencion.trim() || null : null,
+    origen_intervencion: hasIntervention ? draft.origenIntervencion || null : null,
+    recomendacion: hasIntervention ? draft.recomendacion || null : null,
+    descripcion_recomendacion: hasIntervention ? draft.descripcionRecomendacion.trim() || null : null,
+    aceptacion: hasIntervention ? draft.aceptacion || null : null,
+    motivo_no_aceptacion:
+      hasIntervention && (draft.aceptacion === 'No' || draft.aceptacion === 'Parcialmente')
+        ? draft.motivoNoAceptacion.trim() || null
+        : null,
+    cumplimiento_guia: draft.cumplimientoGuia || null,
+    motivo_no_cumplimiento:
+      draft.cumplimientoGuia === 'No cumple' ? draft.motivoNoCumplimiento.trim() || null : null,
+    dias_ahorrados: hasIntervention ? draft.diasAhorrados : null,
+    requiere_seguimiento: draft.requiereSeguimiento,
+    fecha_seguimiento: draft.requiereSeguimiento && draft.fechaSeguimiento ? draft.fechaSeguimiento : null,
+    motivo_seguimiento: draft.requiereSeguimiento ? draft.motivoSeguimiento.trim() || null : null,
+  }
+  const primaryId = draft.id && existingIds.includes(draft.id) ? draft.id : existingIds[0]
+  const request = primaryId
+    ? supabase.from('intervenciones_proa').update(payload).eq('id', primaryId)
+    : supabase.from('intervenciones_proa').insert(payload)
+  const { data, error } = await request.select('*').single()
   if (error) throw error
 
+  const relationDelete = await supabase.from('intervencion_tratamiento').delete().eq('intervencion_id', data.id)
+  if (relationDelete.error) throw relationDelete.error
   if (hasIntervention && draft.tratamientosRelacionados.length) {
     const relationResult = await supabase.from('intervencion_tratamiento').insert(
       Array.from(new Set(draft.tratamientosRelacionados)).map((tratamientoId) => ({

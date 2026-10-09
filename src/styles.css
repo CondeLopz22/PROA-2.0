@@ -1643,6 +1643,31 @@ textarea:focus {
   margin-top: 6px;
 }
 
+.audit-microbiology-context,
+.audit-decision-summary,
+.reevaluation-decision-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+}
+
+.audit-decision-summary {
+  border-left: 4px solid var(--hs-blue-medium);
+}
+
+.reevaluation-decision-form {
+  background: var(--surface);
+}
+
+.reevaluation-decision-form h3,
+.reevaluation-decision-form p {
+  margin: 0;
+}
+
 .discard-form {
   display: grid;
   gap: 10px;
