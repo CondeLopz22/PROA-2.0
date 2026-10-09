@@ -34,6 +34,20 @@ describe('reevaluación terapéutica', () => {
     expect(semanticContextHash({ result: 'Sensible' })).not.toBe(semanticContextHash({ result: 'Resistente' }))
   })
 
+  it('firma DES-03 con el conjunto terapéutico completo sin depender del orden', () => {
+    const context = {
+      code: 'DES-03',
+      treatments: [
+        { id: 't1', antimicrobiano_id: 'a1', antimicrobiano: 'Meropenem', estado: 'Activo' },
+        { id: 't2', antimicrobiano_id: 'a2', antimicrobiano: 'Amikacina', estado: 'Activo' },
+      ],
+      microbiology: [{ id: 'm1', caso_id: 'c1', tipo_muestra_id: 'tm1', resultado_general: 'Positivo' }],
+      sensitivities: [],
+    }
+    expect(buildReevaluationContext(context)).toBe(buildReevaluationContext({ ...context, treatments: [...context.treatments].reverse() }))
+    expect(buildReevaluationContext(context)).not.toBe(buildReevaluationContext({ ...context, treatments: [context.treatments[0]] }))
+  })
+
   it('limita DES-02 a Watch/Reserve con antibiograma disponible', () => {
     const sensitivity = [{ id: 's1', muestra_id: 'm1', resultado: 'Sensible' }]
     expect(shouldCreateDes02('Watch', sensitivity)).toBe(true)

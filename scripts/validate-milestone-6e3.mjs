@@ -19,11 +19,16 @@ if (missing.length) {
 const url = process.env.VITE_SUPABASE_URL
 const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY
 const prefix = 'VALIDACION-6E3'
+const runToken = `${prefix}-${Date.now().toString(36)}`
 const ok = (label, detail = 'OK') => console.log(`✓ ${label}: ${detail}`)
 const fail = (label, error) => {
   console.error(`✗ ${label}`)
   console.error(error?.message ?? error)
   process.exit(1)
+}
+const expectRejected = (label, result) => {
+  if (!result.error) fail(label, 'La operación no autorizada fue aceptada')
+  ok(label)
 }
 const client = () => createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
 
@@ -184,6 +189,17 @@ async function upsertOpportunity(ctx, seed, code, treatment, treatmentIds, conte
   return finding.data
 }
 
+async function closePriorSeedFindings(ctx, caseId) {
+  const result = await ctx.supabase.from('hallazgos_auditoria').update({
+    estado: 'Descartado',
+    motivo_descarte: `${prefix}: cierre previo a nueva ejecución`,
+    fecha_resolucion: new Date().toISOString(),
+  }).eq('caso_id', caseId)
+    .in('codigo_regla', ['AUD-05', 'DES-02', 'DES-03', 'DES-04'])
+    .in('estado', ['Abierto', 'En seguimiento'])
+  if (result.error) fail('Cerrar residuos inequívocos 6E.3', result.error)
+}
+
 const admin = await login(process.env.PROA_TEST_ADMIN_EMAIL, process.env.PROA_TEST_ADMIN_PASSWORD, 'ADMIN')
 if (!admin.profile.es_admin_global) fail('ADMIN global', 'El perfil no es administrador global')
 
@@ -209,19 +225,67 @@ ok('DES-01 reutiliza AUD-05 y reglas DES disponibles')
 const antimicrobials = await admin.supabase.from('catalogo_antimicrobianos').select('id,nombre,aware_categoria').in('aware_categoria', ['Watch', 'Reserve']).eq('estado', 'Activo').limit(2)
 if (antimicrobials.error || antimicrobials.data.length < 2) fail('Antimicrobianos Watch/Reserve', antimicrobials.error ?? 'Se requieren dos')
 const seeded = await seed(admin, 'COMBINADA', antimicrobials.data)
-const des02 = await upsertOpportunity(admin, seeded, 'DES-02', seeded.treatments[0], [seeded.treatments[0].id], `${prefix}-DES02-V1`)
-const des03 = await upsertOpportunity(admin, seeded, 'DES-03', null, seeded.treatments.map((row) => row.id), `${prefix}-DES03-V1`)
+const otherCaseSeed = await seed(admin, 'OTRO-CASO', [antimicrobials.data[0]])
+await closePriorSeedFindings(admin, seeded.caseRow.id)
+const des02Context = `${runToken}-DES02-V1`
+const des03Context = `${runToken}-DES03-V1`
+const des02 = await upsertOpportunity(admin, seeded, 'DES-02', seeded.treatments[0], [seeded.treatments[0].id], des02Context)
+const des03 = await upsertOpportunity(admin, seeded, 'DES-03', null, seeded.treatments.map((row) => row.id), des03Context)
 
 const des03Relations = await admin.supabase.from('hallazgo_tratamiento').select('tratamiento_id').eq('hallazgo_id', des03.id)
 if (des03Relations.error || des03Relations.data.length !== 2) fail('DES-03 relación M:N', des03Relations.error ?? 'No relacionó ambos tratamientos')
 ok('DES-02 y DES-03 con contexto microbiológico')
 ok('DES-03 relaciona todos los tratamientos')
 
-const duplicate = await upsertOpportunity(admin, seeded, 'DES-03', null, seeded.treatments.map((row) => row.id), `${prefix}-DES03-V1`)
+const wrongCaseRelation = await admin.supabase.from('hallazgo_tratamiento').insert({
+  hallazgo_id: des03.id,
+  tratamiento_id: otherCaseSeed.treatments[0].id,
+})
+expectRejected('Tratamiento de otro caso rechazado', wrongCaseRelation)
+
+const otherIps = await admin.supabase.from('ips').select('id,nombre,estado').neq('id', admin.ips.id).eq('estado', 'Activa').limit(1).maybeSingle()
+if (otherIps.error || !otherIps.data) fail('IPS alterna para aislamiento', otherIps.error ?? 'No existe otra IPS activa')
+const otherIpsContext = { ...admin, ips: otherIps.data }
+const otherIpsSeed = await seed(otherIpsContext, 'OTRA-IPS', [antimicrobials.data[0]])
+const wrongIpsRelation = await admin.supabase.from('hallazgo_tratamiento').insert({
+  hallazgo_id: des03.id,
+  tratamiento_id: otherIpsSeed.treatments[0].id,
+})
+expectRejected('Tratamiento de otra IPS rechazado', wrongIpsRelation)
+
+const duplicate = await upsertOpportunity(admin, seeded, 'DES-03', null, seeded.treatments.map((row) => row.id), des03Context)
 if (duplicate.id !== des03.id) fail('Idempotencia por contexto semántico', 'La oportunidad fue duplicada')
-const newContext = await upsertOpportunity(admin, seeded, 'DES-03', null, seeded.treatments.map((row) => row.id), `${prefix}-DES03-V2`)
+const resolveFirstContext = await admin.supabase.from('hallazgos_auditoria').update({
+  estado: 'Resuelto',
+  fecha_resolucion: new Date().toISOString(),
+}).eq('id', des03.id)
+if (resolveFirstContext.error) fail('Resolver primer contexto DES-03', resolveFirstContext.error)
+const newContext = await upsertOpportunity(admin, seeded, 'DES-03', null, seeded.treatments.map((row) => row.id), `${runToken}-DES03-V2`)
 if (newContext.id === des03.id) fail('Nueva información clínica', 'No creó un contexto nuevo')
 ok('Idempotencia y reapertura por contexto relevante')
+
+const mismatchInterventionPayload = {
+  ips_id: admin.ips.id,
+  ronda_id: otherCaseSeed.round.id,
+  hubo_intervencion: true,
+  tipo_intervencion: prefix,
+  recomendacion: 'Validación de integridad entre casos',
+  aceptacion: 'Pendiente',
+}
+let mismatchIntervention = await admin.supabase.from('intervenciones_proa').select('*')
+  .eq('ronda_id', otherCaseSeed.round.id).eq('tipo_intervencion', prefix).limit(1).maybeSingle()
+if (mismatchIntervention.error) fail('Buscar intervención de otro caso', mismatchIntervention.error)
+mismatchIntervention = mismatchIntervention.data
+  ? await admin.supabase.from('intervenciones_proa').update(mismatchInterventionPayload).eq('id', mismatchIntervention.data.id).select('*').single()
+  : await admin.supabase.from('intervenciones_proa').insert(mismatchInterventionPayload).select('*').single()
+if (mismatchIntervention.error) fail('Preparar intervención de otro caso', mismatchIntervention.error)
+const mismatchedDecision = await admin.supabase.rpc('registrar_decision_reevaluacion', {
+  p_hallazgo_id: newContext.id,
+  p_decision: 'No aplica',
+  p_justificacion: `${prefix}: intervención de otro caso`,
+  p_intervencion_id: mismatchIntervention.data.id,
+})
+expectRejected('Decisión e intervención de casos diferentes rechazadas', mismatchedDecision)
 
 const decision = await admin.supabase.rpc('registrar_decision_reevaluacion', {
   p_hallazgo_id: des02.id,
@@ -234,6 +298,54 @@ const resolved = await admin.supabase.from('hallazgos_auditoria').select('estado
 if (resolved.error || resolved.data.estado !== 'Resuelto' || !resolved.data.fecha_resolucion) fail('Cierre atómico', resolved.error ?? resolved.data.estado)
 if (decision.data.profesional_id !== admin.user.id) fail('Autor autenticado', 'El profesional no corresponde a auth.uid()')
 ok('Mantener tratamiento + justificación cierra oportunidad')
+const resolvedSameContext = await upsertOpportunity(admin, seeded, 'DES-02', seeded.treatments[0], [seeded.treatments[0].id], des02Context)
+if (resolvedSameContext.id !== des02.id) fail('Oportunidad resuelta no reaparece', 'Se creó otro hallazgo sin cambio clínico')
+ok('Oportunidad resuelta no reaparece sin cambio clínico')
+
+const decisionOnResolved = await admin.supabase.rpc('registrar_decision_reevaluacion', {
+  p_hallazgo_id: des02.id,
+  p_decision: 'No aplica',
+  p_justificacion: `${prefix}: intento sobre resuelto`,
+  p_intervencion_id: null,
+})
+expectRejected('Decisión sobre hallazgo Resuelto rechazada', decisionOnResolved)
+
+const discarded = await admin.supabase.from('hallazgos_auditoria').update({
+  estado: 'Descartado',
+  motivo_descarte: `${prefix}: descarte`,
+  fecha_resolucion: new Date().toISOString(),
+}).eq('id', newContext.id).select('id').single()
+if (discarded.error) fail('Preparar hallazgo Descartado', discarded.error)
+const decisionOnDiscarded = await admin.supabase.rpc('registrar_decision_reevaluacion', {
+  p_hallazgo_id: newContext.id,
+  p_decision: 'No aplica',
+  p_justificacion: `${prefix}: intento sobre descartado`,
+  p_intervencion_id: null,
+})
+expectRejected('Decisión sobre hallazgo Descartado rechazada', decisionOnDiscarded)
+
+const concurrentFinding = await upsertOpportunity(
+  admin,
+  seeded,
+  'DES-03',
+  null,
+  seeded.treatments.map((row) => row.id),
+  `${runToken}-DES03-CONCURRENCIA`,
+)
+const concurrentPayload = {
+  p_hallazgo_id: concurrentFinding.id,
+  p_decision: 'Mantener tratamiento',
+  p_justificacion: `${prefix}: prueba de concurrencia`,
+  p_intervencion_id: null,
+}
+const concurrentResults = await Promise.all([
+  admin.supabase.rpc('registrar_decision_reevaluacion', concurrentPayload),
+  admin.supabase.rpc('registrar_decision_reevaluacion', concurrentPayload),
+])
+if (concurrentResults.filter((result) => !result.error).length !== 1) {
+  fail('Concurrencia de decisiones', 'Debe aceptarse exactamente una decisión')
+}
+ok('Concurrencia de dos decisiones acepta solo una')
 
 const roundEdit = await admin.supabase.from('rondas_proa').update({ evolucion_clinica: 'Mejoría' }).eq('id', seeded.round.id).select('id').single()
 if (roundEdit.error) fail('Editar ronda de validación', roundEdit.error)
@@ -256,21 +368,41 @@ ok('INFECTOMAG limitado a IPS asignadas')
 const clientUser = await login(process.env.PROA_TEST_CLIENT_EMAIL, process.env.PROA_TEST_CLIENT_PASSWORD, 'IPS CLIENTE')
 const clientRead = await clientUser.supabase.from('mart_reevaluacion_terapeutica').select('ips_id').limit(100)
 if (clientRead.error || clientRead.data.some((row) => row.ips_id !== clientUser.ips.id)) fail('IPS Cliente aislamiento', clientRead.error ?? 'Vio otra IPS')
+const clientAdminContext = { ...admin, ips: clientUser.ips }
+const clientSeed = await seed(clientAdminContext, 'CLIENTE-READONLY', [antimicrobials.data[0]])
+await closePriorSeedFindings(clientAdminContext, clientSeed.caseRow.id)
+const clientFinding = await upsertOpportunity(
+  clientAdminContext,
+  clientSeed,
+  'DES-02',
+  clientSeed.treatments[0],
+  [clientSeed.treatments[0].id],
+  `${runToken}-CLIENTE-DIRECTO`,
+)
 const deniedDecision = await clientUser.supabase.from('decisiones_reevaluacion').insert({
   ips_id: clientUser.ips.id,
-  hallazgo_id: des03.id,
+  hallazgo_id: clientFinding.id,
   decision: 'No aplica',
   justificacion: prefix,
   profesional_id: clientUser.user.id,
 })
-if (!deniedDecision.error) fail('IPS Cliente read-only', 'Pudo insertar una decisión')
-ok('IPS Cliente read-only')
+expectRejected('INSERT directo sin permisos rechazado', deniedDecision)
 
 const ddd = await admin.supabase.from('mart_ddd').select('aware_categoria,ddd_calculadas').limit(1)
 if (ddd.error) fail('DDD/AWaRe', ddd.error)
 ok('DDD/AWaRe continúa funcionando')
 
+const closeOpenFindings = await admin.supabase.from('hallazgos_auditoria').update({
+  estado: 'Descartado',
+  motivo_descarte: `${prefix}: cierre de validación`,
+  fecha_resolucion: new Date().toISOString(),
+}).in('id', [clientFinding.id]).in('estado', ['Abierto', 'En seguimiento'])
+if (closeOpenFindings.error) fail('Cerrar hallazgos de validación', closeOpenFindings.error)
+
 const cleanup = await admin.supabase.from('casos_proa').update({ estado: 'Cerrado', fecha_cierre: new Date().toISOString(), motivo_cierre: prefix }).eq('id', seeded.caseRow.id)
 if (cleanup.error) fail('Identificar seed 6E.3', cleanup.error)
+const cleanupAdditional = await admin.supabase.from('casos_proa').update({ estado: 'Cerrado', fecha_cierre: new Date().toISOString(), motivo_cierre: prefix })
+  .in('id', [otherCaseSeed.caseRow.id, otherIpsSeed.caseRow.id, clientSeed.caseRow.id])
+if (cleanupAdditional.error) fail('Identificar seeds adicionales 6E.3', cleanupAdditional.error)
 await Promise.all([admin.supabase.auth.signOut(), infectomag.supabase.auth.signOut(), clientUser.supabase.auth.signOut()])
 console.log('Milestone 6E.3 validation finished against real Supabase after migration.')

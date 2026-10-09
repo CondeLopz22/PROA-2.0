@@ -36,6 +36,8 @@ Valores permitidos:
 
 Toda decisión exige justificación. `registrar_decision_reevaluacion` toma el profesional de `auth.uid()` y registra la decisión. Un trigger cierra el hallazgo como `Resuelto` dentro de la misma transacción. No existe una decisión `Pendiente`: la ausencia de decisión se representa con el hallazgo `Abierto` o `En seguimiento`.
 
+Solo se aceptan decisiones sobre hallazgos `Abierto` o `En seguimiento`. El RPC, la política RLS y el trigger de inserción rechazan hallazgos `Resuelto` o `Descartado`. El bloqueo de fila y la unicidad de `hallazgo_id` garantizan que dos decisiones concurrentes no puedan registrarse para una misma oportunidad.
+
 La intervención opcional debe pertenecer al mismo caso e IPS. La edición de una intervención actualiza su fila y sincroniza sus tratamientos sin eliminarla, de modo que las referencias históricas se conservan.
 
 ## Idempotencia
@@ -53,6 +55,7 @@ El hash usa información clínica estable: código de regla, identidad del trata
 - Usuario INFECTOMAG: lectura y gestión solo en IPS asignadas.
 - IPS Cliente: lectura en su IPS; no puede insertar decisiones ni modificar hallazgos.
 - Las tablas nuevas tienen RLS. Las políticas comprueban la IPS del hallazgo padre y la relación caso/IPS de los tratamientos e intervenciones.
+- Un trigger de integridad valida en cada inserción/actualización de `hallazgo_tratamiento` que tratamiento y hallazgo pertenezcan al mismo caso e IPS, independientemente de RLS.
 - El RPC es `SECURITY INVOKER`; no usa service role ni evita RLS.
 
 ## Integración

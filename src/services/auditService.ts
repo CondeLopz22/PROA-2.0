@@ -123,6 +123,13 @@ export function shouldFlagReserveWithoutTreatmentIntervention({
   return awareCategory === 'Reserve' && !linkedTreatmentIds.has(treatmentId)
 }
 
+export function findSemanticAuditFinding<T extends { tratamiento_id?: UUID | null }>(
+  rows: T[],
+  treatmentId?: UUID | null,
+) {
+  return rows.find((row) => treatmentId ? row.tratamiento_id === treatmentId : !row.tratamiento_id)
+}
+
 export async function getAuditConfig(ipsId: UUID) {
   const { data, error } = await supabase
     .from('configuracion_auditoria_proa')
@@ -300,9 +307,7 @@ export async function saveAuditFinding(draft: AuditFindingDraft) {
       .eq('contexto_hash', draft.contextHash)
       .limit(20)
     if (sameContext.error) throw sameContext.error
-    const exact = (sameContext.data ?? []).find((row) =>
-      draft.treatmentId ? row.tratamiento_id === draft.treatmentId : !row.tratamiento_id,
-    )
+    const exact = findSemanticAuditFinding(sameContext.data ?? [], draft.treatmentId)
     if (exact) {
       const refreshed = await supabase
         .from('hallazgos_auditoria')

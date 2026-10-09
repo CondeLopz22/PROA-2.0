@@ -81,6 +81,44 @@ on public.decisiones_reevaluacion (ips_id, fecha_decision desc);
 alter table public.hallazgo_tratamiento enable row level security;
 alter table public.decisiones_reevaluacion enable row level security;
 
+create or replace function public.validar_hallazgo_tratamiento()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_hallazgo_caso_id uuid;
+  v_hallazgo_ips_id uuid;
+  v_tratamiento_caso_id uuid;
+  v_tratamiento_ips_id uuid;
+begin
+  select h.caso_id, h.ips_id, t.caso_id, t.ips_id
+  into v_hallazgo_caso_id, v_hallazgo_ips_id, v_tratamiento_caso_id, v_tratamiento_ips_id
+  from public.hallazgos_auditoria h
+  join public.tratamientos_antimicrobianos t on t.id = new.tratamiento_id
+  where h.id = new.hallazgo_id
+  for key share of h, t;
+
+  if not found then
+    raise exception 'Hallazgo o tratamiento no disponible';
+  end if;
+
+  if v_tratamiento_caso_id is distinct from v_hallazgo_caso_id
+    or v_tratamiento_ips_id is distinct from v_hallazgo_ips_id
+  then
+    raise exception 'El tratamiento no pertenece al mismo caso e IPS del hallazgo';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_validar_hallazgo_tratamiento on public.hallazgo_tratamiento;
+create trigger trg_validar_hallazgo_tratamiento
+before insert or update on public.hallazgo_tratamiento
+for each row execute function public.validar_hallazgo_tratamiento();
+
 drop policy if exists hallazgo_tratamiento_select on public.hallazgo_tratamiento;
 drop policy if exists hallazgo_tratamiento_insert on public.hallazgo_tratamiento;
 drop policy if exists hallazgo_tratamiento_delete on public.hallazgo_tratamiento;
@@ -118,6 +156,7 @@ for insert to authenticated with check (
     where h.id = decisiones_reevaluacion.hallazgo_id
       and h.ips_id = decisiones_reevaluacion.ips_id
       and h.codigo_regla in ('AUD-05', 'DES-02', 'DES-03', 'DES-04')
+      and h.estado in ('Abierto', 'En seguimiento')
   )
   and (
     intervencion_id is null
@@ -144,10 +183,12 @@ declare
 begin
   select * into v_hallazgo
   from public.hallazgos_auditoria
-  where id = new.hallazgo_id;
+  where id = new.hallazgo_id
+  for update;
 
   if not found
     or v_hallazgo.codigo_regla not in ('AUD-05', 'DES-02', 'DES-03', 'DES-04')
+    or v_hallazgo.estado not in ('Abierto', 'En seguimiento')
     or not public.puede_escribir_operacion_ips(v_hallazgo.ips_id)
   then
     raise exception 'Hallazgo no disponible para decision de reevaluacion';
@@ -247,6 +288,10 @@ begin
     raise exception 'El hallazgo no corresponde a reevaluacion terapeutica';
   end if;
 
+  if v_hallazgo.estado not in ('Abierto', 'En seguimiento') then
+    raise exception 'Solo se pueden registrar decisiones sobre hallazgos abiertos o en seguimiento';
+  end if;
+
   if exists (
     select 1 from public.decisiones_reevaluacion d
     where d.hallazgo_id = p_hallazgo_id
@@ -344,6 +389,7 @@ where h.codigo_regla in ('AUD-05', 'DES-02', 'DES-03', 'DES-04');
 
 grant select, insert on public.hallazgo_tratamiento to authenticated;
 grant select, insert on public.decisiones_reevaluacion to authenticated;
+revoke all on function public.validar_hallazgo_tratamiento() from public, anon;
 revoke all on function public.validar_decision_reevaluacion() from public, anon;
 revoke all on function public.cerrar_hallazgo_por_decision_reevaluacion() from public, anon;
 revoke all on function public.registrar_decision_reevaluacion(uuid, text, text, uuid) from public, anon;

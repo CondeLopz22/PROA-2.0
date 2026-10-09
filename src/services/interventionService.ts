@@ -196,14 +196,27 @@ export async function replaceRoundIntervention({
   const { data, error } = await request.select('*').single()
   if (error) throw error
 
-  const relationDelete = await supabase.from('intervencion_tratamiento').delete().eq('intervencion_id', data.id)
-  if (relationDelete.error) throw relationDelete.error
+  const decisionLink = await supabase
+    .from('decisiones_reevaluacion')
+    .select('id')
+    .eq('intervencion_id', data.id)
+    .limit(1)
+    .maybeSingle()
+  const reevaluationSchemaUnavailable = decisionLink.error?.code === 'PGRST205' || decisionLink.error?.code === '42P01'
+  if (decisionLink.error && !reevaluationSchemaUnavailable) throw decisionLink.error
+  const preservesHistoricalRelations = Boolean(decisionLink.data)
+
+  if (!preservesHistoricalRelations) {
+    const relationDelete = await supabase.from('intervencion_tratamiento').delete().eq('intervencion_id', data.id)
+    if (relationDelete.error) throw relationDelete.error
+  }
   if (hasIntervention && draft.tratamientosRelacionados.length) {
-    const relationResult = await supabase.from('intervencion_tratamiento').insert(
+    const relationResult = await supabase.from('intervencion_tratamiento').upsert(
       Array.from(new Set(draft.tratamientosRelacionados)).map((tratamientoId) => ({
         intervencion_id: data.id,
         tratamiento_id: tratamientoId,
       })),
+      { onConflict: 'intervencion_id,tratamiento_id', ignoreDuplicates: true },
     )
     if (relationResult.error) throw relationResult.error
   }
