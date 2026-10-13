@@ -1,4 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+for (const file of ['.env.validation.local', '.env.local']) {
+  const path = resolve(process.cwd(), file)
+  if (existsSync(path)) process.loadEnvFile(path)
+}
 
 const required = [
   'VITE_SUPABASE_URL',
@@ -152,10 +159,17 @@ async function seed(ctx, scenario, antimicrobials) {
     : await ctx.supabase.from('microbiologia').insert(samplePayload).select('*').single()
   if (sample.error) fail(`${scenario} preparar microbiología`, sample.error)
   const sensitivityPayload = { muestra_id: sample.data.id, antimicrobiano_id: antimicrobials[0].id, antimicrobiano: antimicrobials[0].nombre, resultado: 'Sensible' }
-  let sensitivity = await ctx.supabase.from('sensibilidad_microbiologica').select('*').eq('muestra_id', sample.data.id).eq('antimicrobiano_id', antimicrobials[0].id).maybeSingle()
-  if (sensitivity.error) fail(`${scenario} sensibilidad`, sensitivity.error)
-  sensitivity = sensitivity.data
-    ? await ctx.supabase.from('sensibilidad_microbiologica').update(sensitivityPayload).eq('id', sensitivity.data.id).select('*').single()
+  const sensitivityLookup = await ctx.supabase
+    .from('sensibilidad_microbiologica')
+    .select('*')
+    .eq('muestra_id', sample.data.id)
+    .eq('antimicrobiano_id', antimicrobials[0].id)
+    .order('id')
+    .limit(1)
+  if (sensitivityLookup.error) fail(`${scenario} sensibilidad`, sensitivityLookup.error)
+  const existingSensitivity = sensitivityLookup.data?.[0]
+  const sensitivity = existingSensitivity
+    ? await ctx.supabase.from('sensibilidad_microbiologica').update(sensitivityPayload).eq('id', existingSensitivity.id)
     : await ctx.supabase.from('sensibilidad_microbiologica').insert(sensitivityPayload).select('*').single()
   if (sensitivity.error) fail(`${scenario} preparar sensibilidad`, sensitivity.error)
   return { patient: patient.data, caseRow: caseRow.data, round: round.data, treatments, sample: sample.data }
