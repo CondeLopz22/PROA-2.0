@@ -40,6 +40,23 @@ function caseIdFromRound(round: RoundProa) {
   return round.caso_id
 }
 
+export function assessmentTypeFromCaseHistory(round: RoundProa, previousRound: RoundProa | null) {
+  if (round.tipo_valoracion === 'Primera valoración' || round.tipo_valoracion === 'Seguimiento') {
+    return round.tipo_valoracion
+  }
+  return previousRound ? 'Seguimiento' : 'Primera valoración'
+}
+
+export function diagnosisSourceForRound(
+  assessmentType: 'Primera valoración' | 'Seguimiento',
+  current: DiagnosisRound[],
+  previous: DiagnosisRound[],
+) {
+  if (current.length) return { rows: current, inherited: false }
+  if (assessmentType === 'Seguimiento' && previous.length) return { rows: previous, inherited: true }
+  return { rows: [] as DiagnosisRound[], inherited: false }
+}
+
 async function getRound(roundId: UUID) {
   const { data, error } = await supabase.from('rondas_proa').select('*').eq('id', roundId).maybeSingle()
   if (error) throw error

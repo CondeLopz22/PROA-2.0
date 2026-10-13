@@ -47,6 +47,7 @@ export type PatientDirectoryRow = {
   activeCase: CaseProa | null
   latestCase: CaseProa | null
   latestRound: RoundProa | null
+  latestActiveCaseRound: RoundProa | null
   activeTreatments: Treatment[]
   roundCount: number
 }
@@ -278,6 +279,7 @@ export async function getPatientDirectory(ipsId: UUID, filter: 'Todos' | 'Activo
 
   const casesByPatient = groupBy((casesResult.data ?? []) as CaseProa[], (row) => row.paciente_id)
   const roundsByPatient = groupBy((roundsResult.data ?? []) as RoundProa[], (row) => row.paciente_id)
+  const roundsByCase = groupBy((roundsResult.data ?? []) as RoundProa[], (row) => row.caso_id)
   const treatmentsByPatient = groupBy((treatmentsResult.data ?? []) as Treatment[], (row) => row.paciente_id)
 
   return patients
@@ -289,6 +291,9 @@ export async function getPatientDirectory(ipsId: UUID, filter: 'Todos' | 'Activo
         activeCase,
         latestCase: latestByDate(patientCases, (row) => row.fecha_apertura),
         latestRound: latestByDate(roundsByPatient.get(patient.id) ?? [], (row) => row.fecha_hora_ronda),
+        latestActiveCaseRound: activeCase
+          ? latestByDate(roundsByCase.get(activeCase.id) ?? [], (row) => row.fecha_hora_ronda)
+          : null,
         activeTreatments: treatmentsByPatient.get(patient.id) ?? [],
         roundCount: roundsByPatient.get(patient.id)?.length ?? 0,
       }
