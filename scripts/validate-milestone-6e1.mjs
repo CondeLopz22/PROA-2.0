@@ -1,4 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+for (const file of ['.env.validation.local', '.env.local']) {
+  const path = resolve(process.cwd(), file)
+  if (existsSync(path)) process.loadEnvFile(path)
+}
 
 const required = [
   'VITE_SUPABASE_URL',
