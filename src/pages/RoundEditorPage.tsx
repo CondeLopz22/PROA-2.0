@@ -35,10 +35,9 @@ import {
 } from '../services/catalogService'
 import {
   getRoundClinicalBundle,
-  replaceRoundDiagnoses,
-  saveRoundContext,
   type DiagnosisDraft,
 } from '../services/clinicalRoundService'
+import { clinicalSaveError, saveClinicalRoundTransaction } from '../services/clinicalSaveService'
 import { clinicalSectionForMessage, type SectionErrors } from '../services/clinicalErrorService'
 import {
   calculateSavedDays,
@@ -48,7 +47,6 @@ import {
   noInterventionReasons,
   recommendationOptions,
   getRoundIntervention,
-  replaceRoundIntervention,
   type InterventionDraft,
 } from '../services/interventionService'
 import { getIpsServices } from '../services/ipsService'
@@ -57,23 +55,18 @@ import {
   getCaseMicrobiology,
   getRoundMicrobiology,
   microbiologyDraftFromBundle,
-  replaceRoundMicrobiology,
   type MicrobiologyBundle,
   type MicrobiologyDraft,
   type SensitivityDraft,
 } from '../services/microbiologyService'
-import { confirmRoundWithNote, generateProaNote, getLatestRoundNote, saveRoundNoteDraft } from '../services/noteService'
+import { generateProaNote, getLatestRoundNote } from '../services/noteService'
 import { patientDisplayName } from '../services/patientService'
 import { readableError } from '../services/supabaseErrors'
 import { canWriteOperationalData } from '../services/permissionService'
 import { isReevaluationRule } from '../services/reevaluationService'
 import {
-  continueTreatment,
-  createTreatment,
   estimatedEndDate,
   findActiveTreatmentDuplicate,
-  modifyTreatment,
-  suspendTreatment,
   treatmentDay,
   treatmentName,
   type NewTreatmentDraft,
@@ -396,73 +389,169 @@ export function RoundEditorPage() {
       }))
   }
 
-  async function saveAllBlocks() {
+  function projectedTreatmentsForNote(): Treatment[] {
+    const current = (bundle?.treatments ?? []).map((treatment) => {
+      const action = treatmentActions[treatment.id]
+      if (action?.kind === 'Modificar') {
+        return {
+          ...treatment,
+          dosis: action.modification.dosis === undefined ? treatment.dosis : action.modification.dosis,
+          unidad: action.modification.unidad === undefined ? treatment.unidad : action.modification.unidad,
+          frecuencia: action.modification.frecuencia === undefined ? treatment.frecuencia : action.modification.frecuencia,
+          via: action.modification.via === undefined ? treatment.via : action.modification.via,
+        }
+      }
+      if (action?.kind === 'Suspender') {
+        return { ...treatment, estado: 'Suspendido', fecha_fin: action.suspension.fechaFin }
+      }
+      return treatment
+    })
+    const added = newTreatments.map<Treatment>((draft, index) => ({
+      id: draft.id ?? `draft-treatment-${index}`,
+      ips_id: bundle?.round.ips_id,
+      paciente_id: bundle?.patient.id,
+      caso_id: casoId,
+      ronda_id: bundle?.round.id,
+      antimicrobiano_id: draft.antimicrobialId,
+      antimicrobiano: draft.antimicrobialName,
+      dosis: draft.dosis || null,
+      unidad: draft.unidad || null,
+      frecuencia: draft.frecuencia || null,
+      via: draft.via || null,
+      fecha_inicio: draft.fechaInicio,
+      duracion_prevista_dias: draft.duracionPrevistaDias ? Number(draft.duracionPrevistaDias) : null,
+      estado: 'Activo',
+    }))
+    return [...current, ...added]
+  }
+
+  function projectedMicrobiologyForNote(): MicrobiologyBundle[] {
+    if (microbiology.status === 'No') return []
+    const result = microbiology.status === 'Pendiente' ? 'Pendiente' : microbiology.resultadoGeneral || 'Pendiente'
+    const sampleId = microbiology.id ?? 'draft-microbiology'
+    return [{
+      microbiology: {
+        id: sampleId,
+        ips_id: bundle?.round.ips_id,
+        caso_id: casoId,
+        ronda_id: bundle?.round.id,
+        tipo_muestra_id: microbiology.tipoMuestraId || null,
+        tipo_muestra: microbiology.tipoMuestra || null,
+        fecha_toma: fromDateTimeLocal(microbiology.fechaToma),
+        fecha_resultado: microbiology.status === 'Pendiente' ? null : fromDateTimeLocal(microbiology.fechaResultado),
+        estado_resultado: result === 'Pendiente' ? 'Pendiente' : 'Disponible',
+        resultado_general: result,
+        microorganismo_id: result === 'Positivo' ? microbiology.microorganismoId || null : null,
+        microorganismo: result === 'Positivo' ? microbiology.microorganismo || null : null,
+        tipo_germen: result === 'Positivo' ? microbiology.tipoGermen || null : null,
+        es_muestra_control: microbiology.esMuestraControl,
+        muestra_previa_id: microbiology.esMuestraControl ? microbiology.muestraPreviaId || null : null,
+        impacto_conducta: microbiology.impactoConducta || null,
+      },
+      resistances: microbiology.resistencias.map((item, index) => ({
+        id: item.id ?? `draft-resistance-${index}`,
+        muestra_id: sampleId,
+        mecanismo: item.mecanismo,
+      })),
+      sensitivities: microbiology.sensibilidades.map((item, index) => ({
+        id: item.id ?? `draft-sensitivity-${index}`,
+        muestra_id: sampleId,
+        antimicrobiano_id: item.antimicrobianoId || null,
+        antimicrobiano: item.antimicrobiano,
+        resultado: item.resultado,
+      })),
+    }]
+  }
+
+  function generateCurrentNote() {
+    if (!bundle) return ''
+    const previous = bundle.previousRound
+    const inherited = clinicalChanged === 'No'
+    return generateProaNote({
+      round: {
+        ...bundle.round,
+        servicio_id: servicioId || null,
+        cama: cama || null,
+        fecha_hora_ronda: fromDateTimeLocal(fechaRonda),
+        tipo_valoracion: tipoValoracion,
+        tipo_terapia: inherited ? previous?.tipo_terapia ?? tipoTerapia : tipoTerapia,
+        terapia_dirigida_por_microbiologia: tipoTerapia === 'Dirigida' ? terapiaMicro : null,
+        tipo_profilaxis: tipoTerapia === 'Profiláctica' ? tipoProfilaxis : null,
+        evolucion_clinica: evolucion || null,
+      },
+      patient: bundle.patient,
+      services,
+      diagnoses: noteDiagnoses([]),
+      treatments: projectedTreatmentsForNote(),
+      microbiology: projectedMicrobiologyForNote(),
+      intervention: {
+        ...intervention,
+        diasAhorrados: intervention.diasAhorrados ?? calculateSavedDays(bundle.treatments, intervention.tratamientosRelacionados),
+      },
+    })
+  }
+
+  async function saveAllBlocks(options: {
+    note?: { generatedText: string; finalText: string } | null
+    confirm?: boolean
+    evaluateAudit?: boolean
+  } = {}) {
     const validationError = validateForm()
     if (validationError) throw new Error(validationError)
     if (!bundle || !user || !casoId) throw new Error('La ronda no tiene contexto completo.')
 
     const inherited = clinicalChanged === 'No'
     const previous = bundle.previousRound
-    const savedRound = await saveRoundContext({
-      roundId: bundle.round.id,
-      ipsId: bundle.round.ips_id,
-      pacienteId: bundle.patient.id,
-      casoId,
-      servicioId,
-      cama,
-      fechaRonda: fromDateTimeLocal(fechaRonda),
-      profesionalId: user.id,
-      tipoValoracion,
-      tipoTerapia: inherited ? ((previous?.tipo_terapia as typeof tipoTerapia) ?? tipoTerapia) : tipoTerapia,
-      terapiaDirigidaPorMicrobiologia: tipoTerapia === 'Dirigida' ? terapiaMicro : null,
-      tipoProfilaxis: tipoTerapia === 'Profiláctica' ? tipoProfilaxis : '',
-      evolucionClinica: evolucion,
-    })
-
     const diagnosisPayload =
       inherited && bundle.previousDiagnoses.length
         ? bundle.previousDiagnoses.map(diagnosisDraftFromRow)
         : [principalDiagnosis, infectiousDiagnosis, ...relatedDiagnoses]
-    const savedDiagnoses = await replaceRoundDiagnoses({ round: savedRound, diagnoses: diagnosisPayload })
-
-    for (const treatment of activeTreatments) {
-      const action = treatmentActions[treatment.id]
-      if (!action) continue
-      if (action.kind === 'Continuar') await continueTreatment(treatment.id, bundle.round.id)
-      if (action.kind === 'Modificar') {
-        await modifyTreatment({ treatment, rondaId: bundle.round.id, modification: action.modification })
-      }
-      if (action.kind === 'Suspender') {
-        await suspendTreatment({ treatment, rondaId: bundle.round.id, suspension: action.suspension })
-      }
-    }
-
-    for (const draft of newTreatments) {
-      await createTreatment({
-        ipsId: bundle.round.ips_id,
-        pacienteId: bundle.patient.id,
-        casoId,
-        rondaId: bundle.round.id,
-        draft,
-      })
-    }
-
-    await replaceRoundMicrobiology({ round: savedRound, draft: microbiology })
-    await replaceRoundIntervention({
-      round: savedRound,
-      draft: {
-        ...intervention,
-        diasAhorrados: intervention.diasAhorrados ?? calculateSavedDays(bundle.treatments, intervention.tratamientosRelacionados),
+    const currentNote = generatedNote || finalNote
+      ? { generatedText: generatedNote, finalText: finalNote || generatedNote }
+      : null
+    const result = await saveClinicalRoundTransaction({
+      roundId: bundle.round.id,
+      ipsId: bundle.round.ips_id,
+      patientId: bundle.patient.id,
+      caseId: casoId,
+      round: {
+        serviceId: servicioId,
+        bed: cama,
+        roundAt: fromDateTimeLocal(fechaRonda),
+        assessmentType: tipoValoracion,
+        therapyType: inherited ? ((previous?.tipo_terapia as typeof tipoTerapia) ?? tipoTerapia) : tipoTerapia,
+        microbiologyDirected: tipoTerapia === 'Dirigida' ? terapiaMicro : null,
+        prophylaxisType: tipoTerapia === 'Profiláctica' ? tipoProfilaxis : '',
+        clinicalEvolution: evolucion,
       },
+      diagnoses: diagnosisPayload,
+      treatmentActions: activeTreatments.flatMap((treatment) => {
+        const draft = treatmentActions[treatment.id]
+        return draft ? [{ treatmentId: treatment.id, draft }] : []
+      }),
+      newTreatments,
+      microbiology,
+      intervention: intervention.huboIntervencion
+        ? {
+            ...intervention,
+            diasAhorrados: intervention.diasAhorrados ?? calculateSavedDays(bundle.treatments, intervention.tratamientosRelacionados),
+          }
+        : null,
+      note: options.note === undefined ? currentNote : options.note,
+      confirm: options.confirm,
     })
 
-    await evaluateCaseAudit({ ipsId: savedRound.ips_id, casoId, roundId: savedRound.id })
-
-    if (generatedNote || finalNote) {
-      await saveRoundNoteDraft({ roundId: savedRound.id, generatedText: generatedNote, finalText: finalNote || generatedNote })
+    let auditWarning = false
+    if (options.evaluateAudit !== false) {
+      try {
+        await evaluateCaseAudit({ ipsId: result.round.ips_id, casoId, roundId: result.round.id })
+      } catch (auditError) {
+        readableError(auditError, 'auditoria_proa')
+        auditWarning = true
+      }
     }
 
-    return { savedRound, savedDiagnoses }
+    return { savedRound: result.round, savedDiagnoses: result.diagnoses, savedNote: result.note, auditWarning }
   }
 
   async function saveProgress() {
@@ -478,11 +567,14 @@ export function RoundEditorPage() {
     setSuccess(null)
 
     try {
-      await saveAllBlocks()
-      setSuccess('Progreso guardado. La ronda permanece en Borrador.')
+      const saved = await saveAllBlocks()
+      setSuccess(saved.auditWarning
+        ? 'Progreso guardado. La evaluación automática de auditoría quedó pendiente.'
+        : 'Progreso guardado. La ronda permanece en Borrador.')
       await load()
     } catch (saveError) {
-      showClinicalError(readableError(saveError))
+      readableError(saveError, 'rondas_proa')
+      showClinicalError(clinicalSaveError(saveError))
     } finally {
       setSaving(false)
     }
@@ -498,40 +590,19 @@ export function RoundEditorPage() {
     clearClinicalErrors()
     setSuccess(null)
     try {
-      let savedRound: RoundClinicalBundle['round']
-      let savedDiagnoses: DiagnosisRound[]
-      try {
-        const saved = await saveAllBlocks()
-        savedRound = saved.savedRound
-        savedDiagnoses = saved.savedDiagnoses
-      } catch (saveBeforeNoteError) {
-        throw new Error(`No se pudo guardar la información estructurada antes de generar la nota. ${readableError(saveBeforeNoteError, 'rondas_proa')}`)
-      }
-
-      const freshBundle = await getRoundClinicalBundle(savedRound.id, user.id)
-      const freshMicrobiology = await getRoundMicrobiology(savedRound.id)
-      const freshIntervention = await getRoundIntervention(savedRound.id)
-      const freshInterventionDraft = interventionDraftFromBundle(freshIntervention)
-      const text = generateProaNote({
-        round: freshBundle.round,
-        patient: freshBundle.patient,
-        services,
-        diagnoses: noteDiagnoses(savedDiagnoses),
-        treatments: freshBundle.treatments,
-        microbiology: freshMicrobiology,
-        intervention: freshInterventionDraft,
+      const text = generateCurrentNote()
+      const saved = await saveAllBlocks({
+        note: { generatedText: text, finalText: text },
       })
-      const savedNote = await saveRoundNoteDraft({ roundId: savedRound.id, generatedText: text, finalText: text })
+      const savedNote = saved.savedNote
       setNote(savedNote)
       setGeneratedNote(text)
       setFinalNote(text)
       setSuccess('Nota actualizada desde datos estructurados.')
       await load()
     } catch (noteError) {
-      const message = noteError instanceof Error && noteError.message.startsWith('No se pudo guardar la información estructurada')
-        ? noteError.message
-        : readableError(noteError, 'nota')
-      showClinicalError(message)
+      readableError(noteError, 'nota')
+      showClinicalError(clinicalSaveError(noteError))
     } finally {
       setSaving(false)
     }
@@ -543,32 +614,16 @@ export function RoundEditorPage() {
     clearClinicalErrors()
     setSuccess(null)
     try {
-      const { savedRound, savedDiagnoses } = await saveAllBlocks()
-      const freshBundle = await getRoundClinicalBundle(savedRound.id, user.id)
-      const freshMicrobiology = await getRoundMicrobiology(savedRound.id)
-      const freshIntervention = await getRoundIntervention(savedRound.id)
-      const freshInterventionDraft = interventionDraftFromBundle(freshIntervention)
-      const text =
-        generatedNote ||
-        generateProaNote({
-          round: freshBundle.round,
-          patient: freshBundle.patient,
-          services,
-          diagnoses: noteDiagnoses(savedDiagnoses),
-          treatments: freshBundle.treatments,
-          microbiology: freshMicrobiology,
-          intervention: freshInterventionDraft,
-        })
-      await confirmRoundWithNote({
-        roundId: savedRound.id,
-        userId: user.id,
-        generatedText: text,
-        finalText: finalNote || text,
+      const text = generatedNote || generateCurrentNote()
+      await saveAllBlocks({
+        note: { generatedText: text, finalText: finalNote || text },
+        confirm: true,
       })
       setSuccess('Ronda confirmada con nota PROA.')
       await load()
     } catch (confirmError) {
-      showClinicalError(readableError(confirmError))
+      readableError(confirmError, 'rondas_proa')
+      showClinicalError(clinicalSaveError(confirmError))
     } finally {
       setSaving(false)
     }
