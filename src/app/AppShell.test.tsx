@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { AppShell } from './AppShell'
@@ -8,6 +9,7 @@ import type { ProductUserType } from '../types/domain'
 
 const mocks = vi.hoisted(() => ({
   userType: 'ips_cliente' as ProductUserType,
+  setActiveIps: vi.fn(),
 }))
 
 vi.mock('../features/auth/authContext', () => ({
@@ -22,13 +24,16 @@ vi.mock('../features/auth/authContext', () => ({
 vi.mock('../features/ips/ipsContext', () => ({
   useIps: () => ({
     status: 'ready',
-    allowedIps: [{ id: 'ips-1', nombre: 'GESTION SALUD', estado: 'Activa' }],
+    allowedIps: [
+      { id: 'ips-1', nombre: 'GESTION SALUD', estado: 'Activa' },
+      { id: 'ips-2', nombre: 'HUJMB', estado: 'Activa' },
+    ],
     activeIps: { id: 'ips-1', nombre: 'GESTION SALUD', estado: 'Activa' },
     profile: { usuario_id: 'user-1', nombre: 'Usuario', estado: 'Activo', es_admin_global: false },
     activeMembership: { usuario_id: 'user-1', ips_id: 'ips-1', rol: 'IPS Cliente', estado: 'Activo' },
     userType: mocks.userType,
     error: null,
-    setActiveIps: vi.fn(),
+    setActiveIps: mocks.setActiveIps,
   }),
 }))
 
@@ -40,6 +45,7 @@ describe('AppShell role navigation', () => {
   afterEach(() => {
     cleanup()
     mocks.userType = 'ips_cliente'
+    mocks.setActiveIps.mockReset()
   })
 
   it('oculta Administración para Usuario INFECTOMAG e IPS Cliente', () => {
@@ -90,5 +96,12 @@ describe('AppShell role navigation', () => {
 
     expect(screen.getByRole('heading', { name: 'Acceso denegado' })).toBeInTheDocument()
     expect(screen.queryByText('Panel Administración')).not.toBeInTheDocument()
+  })
+
+  it('cambia la IPS activa desde el selector institucional', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter initialEntries={['/pacientes/patient-1']}><AppShell><div>Contexto clínico</div></AppShell></MemoryRouter>)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'IPS activa' }), 'ips-2')
+    expect(mocks.setActiveIps).toHaveBeenCalledWith(expect.objectContaining({ id: 'ips-2', nombre: 'HUJMB' }))
   })
 })

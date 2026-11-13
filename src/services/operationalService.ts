@@ -49,8 +49,15 @@ export type PatientDirectoryRow = {
   latestRound: RoundProa | null
   latestActiveCaseRound: RoundProa | null
   activeTreatments: Treatment[]
+  latestMicrobiology: Microbiology | null
+  latestIntervention: ProaIntervention | null
+  service: ServiceIps | null
+  workflowState: PatientWorkflowState
+  lastActivityAt: string | null
   roundCount: number
 }
+
+export type PatientWorkflowState = 'Primera valoración' | 'Seguimiento activo' | 'Caso cerrado' | 'Sin caso'
 
 function isActiveCase(row: CaseProa) {
   return row.estado === 'Activo' && !row.fecha_cierre
@@ -93,6 +100,13 @@ function deriveStatus({
   if (intervention?.requiere_seguimiento) return 'En seguimiento'
   if (activeTreatments.length) return 'En seguimiento'
   return 'Al día'
+}
+
+export function patientWorkflowState(activeCase: CaseProa | null, latestActiveCaseRound: RoundProa | null, latestCase: CaseProa | null): PatientWorkflowState {
+  if (activeCase && !latestActiveCaseRound) return 'Primera valoración'
+  if (activeCase) return 'Seguimiento activo'
+  if (latestCase?.estado === 'Cerrado' || latestCase?.fecha_cierre) return 'Caso cerrado'
+  return 'Sin caso'
 }
 
 export function operationalStatusRules() {
@@ -268,33 +282,61 @@ export async function getPatientDirectory(ipsId: UUID, filter: 'Todos' | 'Activo
   if (!patients.length) return []
 
   const patientIds = patients.map((row) => row.id)
-  const [casesResult, roundsResult, treatmentsResult] = await Promise.all([
+  const [casesResult, roundsResult, treatmentsResult, servicesResult] = await Promise.all([
     supabase.from('casos_proa').select('*').eq('ips_id', ipsId).in('paciente_id', patientIds).order('fecha_apertura', { ascending: false }),
     supabase.from('rondas_proa').select('*').eq('ips_id', ipsId).in('paciente_id', patientIds).order('fecha_hora_ronda', { ascending: false }),
     supabase.from('tratamientos_antimicrobianos').select('*').eq('ips_id', ipsId).in('paciente_id', patientIds).eq('estado', 'Activo'),
+    supabase.from('servicios_ips').select('*').eq('ips_id', ipsId),
   ])
   if (casesResult.error) throw casesResult.error
   if (roundsResult.error) throw roundsResult.error
   if (treatmentsResult.error) throw treatmentsResult.error
+  if (servicesResult.error) throw servicesResult.error
 
-  const casesByPatient = groupBy((casesResult.data ?? []) as CaseProa[], (row) => row.paciente_id)
-  const roundsByPatient = groupBy((roundsResult.data ?? []) as RoundProa[], (row) => row.paciente_id)
-  const roundsByCase = groupBy((roundsResult.data ?? []) as RoundProa[], (row) => row.caso_id)
-  const treatmentsByPatient = groupBy((treatmentsResult.data ?? []) as Treatment[], (row) => row.paciente_id)
+  const cases = (casesResult.data ?? []) as CaseProa[]
+  const rounds = (roundsResult.data ?? []) as RoundProa[]
+  const caseIds = cases.map((row) => row.id)
+  const roundIds = rounds.map((row) => row.id)
+  const [microbiologyResult, interventionsResult] = await Promise.all([
+    caseIds.length
+      ? supabase.from('microbiologia').select('*').eq('ips_id', ipsId).in('caso_id', caseIds).order('fecha_toma', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    roundIds.length
+      ? supabase.from('intervenciones_proa').select('*').eq('ips_id', ipsId).in('ronda_id', roundIds).order('fecha_creacion', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (microbiologyResult.error) throw microbiologyResult.error
+  if (interventionsResult.error) throw interventionsResult.error
+
+  const casesByPatient = groupBy(cases, (row) => row.paciente_id)
+  const roundsByPatient = groupBy(rounds, (row) => row.paciente_id)
+  const roundsByCase = groupBy(rounds, (row) => row.caso_id)
+  const treatmentsByCase = groupBy((treatmentsResult.data ?? []) as Treatment[], (row) => row.caso_id)
+  const microbiologyByCase = groupBy((microbiologyResult.data ?? []) as Microbiology[], (row) => row.caso_id)
+  const interventionsByRound = groupBy((interventionsResult.data ?? []) as ProaIntervention[], (row) => row.ronda_id)
+  const services = new Map(((servicesResult.data ?? []) as ServiceIps[]).map((row) => [row.id, row]))
 
   return patients
     .map((patient) => {
       const patientCases = casesByPatient.get(patient.id) ?? []
       const activeCase = patientCases.find(isActiveCase) ?? null
+      const latestCase = latestByDate(patientCases, (row) => row.fecha_apertura)
+      const latestRound = latestByDate(roundsByPatient.get(patient.id) ?? [], (row) => row.fecha_hora_ronda)
+      const latestActiveCaseRound = activeCase
+        ? latestByDate(roundsByCase.get(activeCase.id) ?? [], (row) => row.fecha_hora_ronda)
+        : null
       return {
         patient,
         activeCase,
-        latestCase: latestByDate(patientCases, (row) => row.fecha_apertura),
-        latestRound: latestByDate(roundsByPatient.get(patient.id) ?? [], (row) => row.fecha_hora_ronda),
-        latestActiveCaseRound: activeCase
-          ? latestByDate(roundsByCase.get(activeCase.id) ?? [], (row) => row.fecha_hora_ronda)
-          : null,
-        activeTreatments: treatmentsByPatient.get(patient.id) ?? [],
+        latestCase,
+        latestRound,
+        latestActiveCaseRound,
+        activeTreatments: activeCase ? treatmentsByCase.get(activeCase.id) ?? [] : [],
+        latestMicrobiology: activeCase ? latestByDate(microbiologyByCase.get(activeCase.id) ?? [], (row) => row.fecha_resultado ?? row.fecha_toma ?? row.fecha_creacion) : null,
+        latestIntervention: latestRound ? latestByDate(interventionsByRound.get(latestRound.id) ?? [], (row) => row.fecha_creacion) : null,
+        service: latestRound?.servicio_id ? services.get(latestRound.servicio_id) ?? null : null,
+        workflowState: patientWorkflowState(activeCase, latestActiveCaseRound, latestCase),
+        lastActivityAt: latestRound?.fecha_hora_ronda ?? latestCase?.fecha_cierre ?? latestCase?.fecha_apertura ?? null,
         roundCount: roundsByPatient.get(patient.id)?.length ?? 0,
       }
     })

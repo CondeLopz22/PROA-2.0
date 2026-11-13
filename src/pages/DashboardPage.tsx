@@ -275,7 +275,7 @@ export function ActiveMatrix({ rows }: { rows: ActiveCaseRow[] }) {
                 <td>{formatDateTime(row.latestRound?.fecha_hora_ronda)}</td>
                 <td>{row.requiresFollowUp ? 'Sí' : 'No'}</td>
                 <td><span className="pill">{row.status}</span></td>
-                <td><Link className="table-action" to={`/pacientes?documento=${row.patient.numero_identificacion}`}>Abrir</Link></td>
+                <td><Link className="table-action" to={`/pacientes/${row.patient.id}`}>Abrir</Link></td>
               </tr>
             ))}
           </tbody>
@@ -283,7 +283,7 @@ export function ActiveMatrix({ rows }: { rows: ActiveCaseRow[] }) {
       </div>
       <div className="mobile-card-list patient-card-list">
         {rows.map((row) => (
-          <Link className="mobile-record-card patient-active-card" key={row.case.id} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
+          <Link className="mobile-record-card patient-active-card" key={row.case.id} to={`/pacientes/${row.patient.id}`}>
             <div className="mobile-card-header">
               <strong>{patientDisplayName(row.patient)}</strong>
               <span className="pill">{row.status}</span>
@@ -335,7 +335,7 @@ export function OperationalKanban({
         getKey={(row) => row.case.id}
         selectedColumnId={selectedColumn}
         renderCard={(row, columnId) => (
-          <Link className={`kanban-card ${statusClass(columnId)}`} to={`/pacientes?documento=${row.patient.numero_identificacion}`}>
+          <Link className={`kanban-card ${statusClass(columnId)}`} to={`/pacientes/${row.patient.id}`}>
             <strong>{patientDisplayName(row.patient)}</strong>
             <span>{row.service?.nombre ?? row.case.ubicacion_actual ?? 'Sin servicio'} · {row.latestRound?.cama ?? row.case.cama_actual ?? 'Sin cama'}</span>
             <span>{treatmentSummary(row)}</span>

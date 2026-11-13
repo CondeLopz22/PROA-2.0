@@ -133,11 +133,7 @@ h3 {
 
 .login-hero {
   align-items: end;
-  background:
-    linear-gradient(135deg, rgba(11, 39, 64, 0.92), rgba(18, 59, 93, 0.78)),
-    radial-gradient(circle at 28% 28%, rgba(224, 198, 106, 0.18), transparent 18%),
-    radial-gradient(circle at 70% 35%, rgba(107, 191, 174, 0.2), transparent 20%),
-    var(--hs-blue);
+  background: var(--hs-blue);
   color: #ffffff;
   display: flex;
   min-height: 100vh;
@@ -146,66 +142,20 @@ h3 {
   position: relative;
 }
 
-.microbe-field {
+.login-hero-image {
+  height: 100%;
   inset: 0;
-  opacity: 0.28;
+  max-width: none;
+  object-fit: cover;
+  object-position: left center;
   position: absolute;
+  width: 210%;
 }
 
-.microbe-field span {
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  border-radius: 999px;
-  display: block;
-  height: 170px;
+.login-hero-overlay {
+  background: linear-gradient(180deg, rgba(11, 39, 64, 0.18) 15%, rgba(11, 39, 64, 0.88) 100%);
+  inset: 0;
   position: absolute;
-  width: 170px;
-}
-
-.microbe-field span:nth-child(1) {
-  left: 12%;
-  top: 12%;
-}
-
-.microbe-field span:nth-child(2) {
-  height: 240px;
-  right: 14%;
-  top: 22%;
-  width: 240px;
-}
-
-.microbe-field span:nth-child(3) {
-  bottom: 12%;
-  height: 120px;
-  left: 36%;
-  width: 120px;
-}
-
-.microbe-field span:nth-child(4) {
-  border-radius: 42% 58% 44% 56%;
-  bottom: 30%;
-  height: 90px;
-  right: 34%;
-  width: 210px;
-}
-
-.microbe-field::before,
-.microbe-field::after {
-  background:
-    radial-gradient(circle, rgba(224, 198, 106, 0.42) 0 2px, transparent 3px),
-    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.24) 0 26%, transparent 28%);
-  background-size: 54px 54px, 150px 56px;
-  content: "";
-  filter: blur(0.1px);
-  inset: 8% 10%;
-  opacity: 0.72;
-  position: absolute;
-  transform: rotate(-11deg);
-}
-
-.microbe-field::after {
-  inset: 24% 5% 10% 28%;
-  opacity: 0.46;
-  transform: rotate(18deg);
 }
 
 .login-hero-copy {
@@ -1860,6 +1810,604 @@ textarea:focus {
     justify-self: stretch;
     justify-content: center;
     margin-top: 4px;
+  }
+}
+
+/* EST-03A clinical navigation */
+.ips-chip span {
+  display: grid;
+  gap: 1px;
+}
+
+.ips-chip small {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.ips-chip strong {
+  color: #ffffff;
+  font-size: 0.86rem;
+}
+
+.patients-page,
+.patient-record-page {
+  max-width: 1680px;
+}
+
+.ips-context-view {
+  min-width: 0;
+}
+
+.patient-directory-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.patient-directory-toolbar {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(320px, 1fr) auto;
+}
+
+.patient-search {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+}
+
+.patient-search label {
+  min-width: 0;
+}
+
+.directory-view-controls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.patient-directory-table {
+  min-width: 1240px;
+}
+
+.patient-directory-table td {
+  vertical-align: top;
+}
+
+.patient-name-link {
+  display: grid;
+  gap: 3px;
+  min-width: 170px;
+}
+
+.patient-name-link:hover strong {
+  color: var(--hs-blue-medium);
+}
+
+.patient-name-link small {
+  color: var(--muted);
+}
+
+.status-badge {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--hs-blue);
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.2;
+  max-width: 100%;
+  padding: 5px 9px;
+  white-space: normal;
+}
+
+.status-badge.state-assessment,
+.patient-clinical-card.state-assessment {
+  border-color: #e4c45a;
+}
+
+.status-badge.state-followup {
+  background: #ecfdf3;
+  border-color: #abefc6;
+  color: #067647;
+}
+
+.patient-clinical-card.state-followup {
+  border-left-color: #067647;
+}
+
+.status-badge.state-closed {
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.patient-clinical-card.state-closed {
+  border-left-color: #667085;
+}
+
+.status-badge.state-empty {
+  background: #eff8ff;
+  border-color: #b2ddff;
+  color: #175cd3;
+}
+
+.patient-clinical-card.state-empty {
+  border-left-color: #175cd3;
+}
+
+.patient-card-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.patient-card-actions .secondary-button,
+.patient-card-actions .button-link {
+  font-size: 0.8rem;
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.patient-kanban {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(250px, 1fr));
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.patient-kanban-column {
+  background: #f7fafb;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-rows: auto 1fr;
+  max-height: min(680px, calc(100vh - 330px));
+  min-width: 0;
+  padding: 10px;
+}
+
+.patient-kanban-column > header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.patient-kanban-column > header span {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 3px 8px;
+}
+
+.patient-kanban-column > div {
+  align-content: start;
+  display: grid;
+  gap: 9px;
+  overflow-y: auto;
+}
+
+.patient-clinical-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--hs-gold);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.patient-clinical-card:hover,
+.patient-clinical-card:focus-within {
+  box-shadow: 0 10px 24px rgba(11, 39, 64, 0.1);
+}
+
+.patient-card-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.patient-card-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.patient-card-heading strong {
+  color: var(--hs-navy);
+}
+
+.patient-card-heading span,
+.patient-clinical-card dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.patient-clinical-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.patient-clinical-card dl > div {
+  display: grid;
+  gap: 2px;
+}
+
+.patient-clinical-card dd {
+  font-size: 0.84rem;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.patient-record-hero {
+  align-items: end;
+  background: linear-gradient(120deg, var(--hs-navy), var(--hs-blue));
+  border-bottom: 4px solid var(--hs-gold);
+  border-radius: 8px;
+  color: #ffffff;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 24px;
+}
+
+.patient-record-hero h1,
+.patient-record-hero .eyebrow {
+  color: #ffffff;
+}
+
+.record-identity {
+  display: grid;
+  gap: 6px;
+}
+
+.record-identity > p:last-child {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.back-link {
+  align-items: center;
+  color: rgba(255, 255, 255, 0.84);
+  display: inline-flex;
+  font-size: 0.82rem;
+  gap: 5px;
+  width: fit-content;
+}
+
+.record-actions {
+  align-items: flex-end;
+  display: grid;
+  gap: 9px;
+  justify-items: end;
+}
+
+.record-actions .status-badge {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+.record-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.record-summary-card {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 11px;
+  padding: 14px;
+}
+
+.record-summary-card > span {
+  align-items: center;
+  background: var(--primary-soft);
+  border-radius: 6px;
+  color: var(--hs-blue-medium);
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.record-summary-card div {
+  display: grid;
+  gap: 2px;
+}
+
+.record-summary-card small {
+  color: var(--muted);
+}
+
+.patient-record-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.case-selector {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 76px;
+}
+
+.case-selector button {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  text-align: left;
+}
+
+.case-selector button span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.case-selector button.selected {
+  background: var(--primary-soft);
+  border-color: var(--hs-blue-medium);
+  box-shadow: inset 3px 0 0 var(--hs-gold);
+}
+
+.record-content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.record-data-grid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.record-data-grid > div {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.record-data-grid span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.record-data-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.record-section-grid,
+.clinical-record-section {
+  display: grid;
+  gap: 10px;
+}
+
+.record-section-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clinical-record-section > header {
+  align-items: center;
+  color: var(--hs-blue-medium);
+  display: flex;
+  gap: 8px;
+}
+
+.record-item {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+}
+
+.record-item-list {
+  display: grid;
+  gap: 8px;
+}
+
+.record-item span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.clinical-timeline {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.clinical-timeline li {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  padding-bottom: 18px;
+  position: relative;
+}
+
+.clinical-timeline li::before {
+  background: var(--border);
+  content: "";
+  left: 6px;
+  position: absolute;
+  top: 13px;
+  bottom: -2px;
+  width: 2px;
+}
+
+.clinical-timeline li:last-child::before {
+  display: none;
+}
+
+.timeline-dot {
+  background: var(--hs-gold);
+  border: 3px solid #fff8dc;
+  border-radius: 50%;
+  height: 14px;
+  margin-top: 4px;
+  position: relative;
+  width: 14px;
+  z-index: 1;
+}
+
+.clinical-timeline li > div {
+  display: grid;
+  gap: 5px;
+}
+
+.clinical-timeline p {
+  color: var(--muted);
+}
+
+.timeline-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.timeline-meta time {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 1199px) {
+  .patient-directory-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .directory-view-controls {
+    justify-content: space-between;
+  }
+
+  .patient-kanban {
+    grid-auto-columns: minmax(280px, calc((100% - 12px) / 2));
+    grid-auto-flow: column;
+    grid-template-columns: none;
+  }
+
+  .record-summary-grid,
+  .record-data-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .patient-record-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .case-selector {
+    grid-auto-columns: minmax(210px, 1fr);
+    grid-auto-flow: column;
+    overflow-x: auto;
+    position: static;
+  }
+
+  .case-selector > div,
+  .case-selector > p {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 767px) {
+  .patient-search {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .patient-search label {
+    grid-column: 1 / -1;
+  }
+
+  .directory-view-controls,
+  .patient-record-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .directory-view-controls {
+    display: grid;
+  }
+
+  .patient-kanban {
+    display: grid;
+    grid-auto-columns: minmax(86vw, 1fr);
+  }
+
+  .patient-kanban-column {
+    max-height: 620px;
+  }
+
+  .patient-record-hero {
+    display: flex;
+    padding: 18px;
+  }
+
+  .record-actions {
+    align-items: stretch;
+    justify-items: stretch;
+  }
+
+  .record-summary-grid,
+  .record-data-grid,
+  .record-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-card-actions > * {
+    flex: 1 1 130px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 430px) {
+  .login-hero-image {
+    width: 240%;
+  }
+
+  .patient-search {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-search label {
+    grid-column: auto;
+  }
+
+  .patient-search button,
+  .directory-view-controls > button {
+    width: 100%;
   }
 }
 

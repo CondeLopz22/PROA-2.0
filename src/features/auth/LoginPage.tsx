@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Activity, LockKeyhole, Mail } from 'lucide-react'
+import loginPetriImage from '../../assets/branding/login-petri-proa.png'
 import { getSupabaseConfigError, supabase } from '../../lib/supabase'
 import { readableError } from '../../services/supabaseErrors'
 
@@ -23,12 +24,8 @@ export function LoginPage() {
   return (
     <main className="login-screen">
       <section className="login-hero" aria-hidden="true">
-        <div className="microbe-field">
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
+        <img alt="" className="login-hero-image" src={loginPetriImage} />
+        <div className="login-hero-overlay" />
         <div className="login-hero-copy">
           <p className="eyebrow">HealthSolutions</p>
           <h1>INFECTOMAG PROA</h1>
