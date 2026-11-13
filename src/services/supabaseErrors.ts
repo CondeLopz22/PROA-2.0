@@ -22,6 +22,11 @@ export function readableError(error: unknown, module = 'general') {
         : 'Ocurrió un error inesperado.'
 
   const normalized = message.toLowerCase()
+  if (message.includes('EST02_ACTIVE_CASE:')) return 'Este paciente ya tiene un caso PROA activo. Continúa ese caso antes de abrir otro episodio.'
+  if (message.includes('EST02_DRAFT_EXISTS:')) return 'Este caso ya tiene una ronda en borrador. Continúa el borrador existente.'
+  if (message.includes('EST02_CLOSED_CASE:')) return 'El caso está cerrado. Debe reabrirse explícitamente antes de registrar una nueva ronda.'
+  if (message.includes('EST02_CONTEXT:')) return 'El paciente, el caso y la IPS no corresponden al mismo contexto clínico.'
+  if (message.includes('EST02_ACCESS:')) return 'No tienes permisos para iniciar una ronda en esta IPS.'
   if (normalized.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.'
   if (normalized.includes('jwt') || normalized.includes('session')) return 'La sesión expiró. Ingresa nuevamente.'
   if (normalized.includes('permission denied') || normalized.includes('violates row-level security')) {

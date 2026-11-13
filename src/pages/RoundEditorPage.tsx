@@ -34,6 +34,8 @@ import {
   catalogLabel,
 } from '../services/catalogService'
 import {
+  assessmentTypeFromCaseHistory,
+  diagnosisSourceForRound,
   getRoundClinicalBundle,
   type DiagnosisDraft,
 } from '../services/clinicalRoundService'
@@ -125,9 +127,9 @@ function fromDateTimeLocal(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
-function diagnosisDraftFromRow(row: DiagnosisRound): DiagnosisDraft {
+function diagnosisDraftFromRow(row: DiagnosisRound, preserveId = true): DiagnosisDraft {
   return {
-    id: row.id,
+    id: preserveId ? row.id : undefined,
     codigo_cie10: row.codigo_cie10 ?? '',
     descripcion_cie10: row.descripcion_cie10 ?? '',
     tipo_diagnostico:
@@ -252,11 +254,8 @@ export function RoundEditorPage() {
       setFechaRonda(toDateTimeLocal(nextBundle.round.fecha_hora_ronda))
       setServicioId(nextBundle.round.servicio_id ?? '')
       setCama(nextBundle.round.cama ?? nextBundle.caseProa.cama_actual ?? '')
-      setTipoValoracion(
-        nextBundle.round.tipo_valoracion === 'Seguimiento' || nextBundle.previousRound
-          ? 'Seguimiento'
-          : 'Primera valoración',
-      )
+      const nextAssessmentType = assessmentTypeFromCaseHistory(nextBundle.round, nextBundle.previousRound)
+      setTipoValoracion(nextAssessmentType)
       setTipoTerapia(
         (nextBundle.round.tipo_terapia as (typeof therapyTypes)[number] | null) ??
           (nextBundle.previousRound?.tipo_terapia as (typeof therapyTypes)[number] | null) ??
@@ -270,13 +269,20 @@ export function RoundEditorPage() {
       )
       setEvolucion((nextBundle.round.evolucion_clinica as (typeof evolutionOptions)[number] | null) ?? '')
 
-      const rows = nextBundle.diagnoses.length ? nextBundle.diagnoses : nextBundle.previousDiagnoses
+      const diagnosisSource = diagnosisSourceForRound(
+        nextAssessmentType,
+        nextBundle.diagnoses,
+        nextBundle.previousDiagnoses,
+      )
+      const rows = diagnosisSource.rows
       const principal = rows.find((row) => row.tipo_diagnostico === 'Principal')
       const infectious = rows.find((row) => row.tipo_diagnostico === 'Infeccioso')
-      setPrincipalDiagnosis(principal ? diagnosisDraftFromRow(principal) : blankDiagnosis('Principal'))
-      setInfectiousDiagnosis(infectious ? diagnosisDraftFromRow(infectious) : blankDiagnosis('Infeccioso'))
-      setRelatedDiagnoses(rows.filter((row) => row.tipo_diagnostico === 'Relacionado').map(diagnosisDraftFromRow))
-      setClinicalChanged(nextBundle.round.tipo_valoracion === 'Seguimiento' && !nextBundle.diagnoses.length ? 'No' : 'Sí')
+      setPrincipalDiagnosis(principal ? diagnosisDraftFromRow(principal, !diagnosisSource.inherited) : blankDiagnosis('Principal'))
+      setInfectiousDiagnosis(infectious ? diagnosisDraftFromRow(infectious, !diagnosisSource.inherited) : blankDiagnosis('Infeccioso'))
+      setRelatedDiagnoses(rows
+        .filter((row) => row.tipo_diagnostico === 'Relacionado')
+        .map((row) => diagnosisDraftFromRow(row, !diagnosisSource.inherited)))
+      setClinicalChanged(diagnosisSource.inherited ? 'No' : 'Sí')
       setNewTreatments([])
       setTreatmentActions({})
     } catch (loadError) {
@@ -504,7 +510,7 @@ export function RoundEditorPage() {
     const previous = bundle.previousRound
     const diagnosisPayload =
       inherited && bundle.previousDiagnoses.length
-        ? bundle.previousDiagnoses.map(diagnosisDraftFromRow)
+        ? bundle.previousDiagnoses.map((row) => diagnosisDraftFromRow(row, false))
         : [principalDiagnosis, infectiousDiagnosis, ...relatedDiagnoses]
     const currentNote = generatedNote || finalNote
       ? { generatedText: generatedNote, finalText: finalNote || generatedNote }
@@ -731,10 +737,7 @@ export function RoundEditorPage() {
             </label>
             <label>
               Tipo de valoración
-              <select disabled={readOnly} value={tipoValoracion} onChange={(event) => setTipoValoracion(event.target.value as typeof tipoValoracion)}>
-                <option>Primera valoración</option>
-                <option>Seguimiento</option>
-              </select>
+              <input disabled value={tipoValoracion} />
             </label>
           </div>
         </article>
@@ -766,9 +769,9 @@ export function RoundEditorPage() {
             </div>
             <InheritedContext bundle={bundle} activeTreatments={activeTreatments} />
             <fieldset className="segmented-field">
-              <legend>¿Hubo cambios en el contexto clínico?</legend>
-              <label><input checked={clinicalChanged === 'No'} disabled={readOnly} onChange={() => setClinicalChanged('No')} type="radio" /> No</label>
-              <label><input checked={clinicalChanged === 'Sí'} disabled={readOnly} onChange={() => setClinicalChanged('Sí')} type="radio" /> Sí</label>
+              <legend>Diagnósticos de este seguimiento</legend>
+              <label><input checked={clinicalChanged === 'No'} disabled={readOnly} onChange={() => setClinicalChanged('No')} type="radio" /> Sin cambios</label>
+              <label><input checked={clinicalChanged === 'Sí'} disabled={readOnly} onChange={() => setClinicalChanged('Sí')} type="radio" /> Con cambios</label>
             </fieldset>
           </article>
         ) : null}

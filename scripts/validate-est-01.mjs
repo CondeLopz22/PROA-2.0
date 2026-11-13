@@ -88,44 +88,27 @@ if (service.error) fail('Servicio activo', service.error)
 const antimicrobial = await operator.supabase.from('catalogo_antimicrobianos').select('id,nombre,aware_categoria').eq('estado', 'Activo').limit(1).single()
 if (antimicrobial.error) fail('Antimicrobiano activo', antimicrobial.error)
 
-const document = 'VALIDACION-EST01'
-let patient = await operator.supabase.from('pacientes').select('*')
-  .eq('ips_id', operator.ips.id).eq('tipo_identificacion', 'CC').eq('numero_identificacion', document).maybeSingle()
-if (patient.error) fail('Buscar paciente', patient.error)
-if (!patient.data) {
-  patient = await operator.supabase.from('pacientes').insert({
-    ips_id: operator.ips.id,
-    tipo_identificacion: 'CC',
-    numero_identificacion: document,
-    nombres: 'VALIDACION',
-    apellidos: 'EST01',
-    sexo: 'No especificado',
-  }).select('*').single()
-  if (patient.error) fail('Crear paciente', patient.error)
-}
-
-const caseResult = await operator.supabase.from('casos_proa').insert({
+const document = runToken.slice(0, 50)
+const patient = await operator.supabase.from('pacientes').insert({
   ips_id: operator.ips.id,
-  paciente_id: patient.data.id,
-  fecha_apertura: new Date().toISOString(),
-  estado: 'Activo',
-  ubicacion_actual: service.data.nombre,
-  cama_actual: runToken,
+  tipo_identificacion: 'CC',
+  numero_identificacion: document,
+  nombres: 'VALIDACION',
+  apellidos: 'EST01',
+  sexo: 'No especificado',
 }).select('*').single()
-if (caseResult.error) fail('Crear caso aislado', caseResult.error)
-const caseRow = caseResult.data
+if (patient.error) fail('Crear paciente aislado', patient.error)
 
-const previousRound = await operator.supabase.from('rondas_proa').insert({
-  ips_id: operator.ips.id,
-  paciente_id: patient.data.id,
-  caso_id: caseRow.id,
-  servicio_id: service.data.id,
-  fecha_hora_ronda: new Date(Date.now() - 86_400_000).toISOString(),
-  tipo_valoracion: 'Primera valoración',
-  estado: 'Borrador',
-  profesional_id: operator.user.id,
-}).select('*').single()
-if (previousRound.error) fail('Crear ronda anterior', previousRound.error)
+const initial = await operator.supabase.rpc('iniciar_ronda_proa', {
+  p_ips_id: operator.ips.id,
+  p_paciente_id: patient.data.id,
+  p_caso_id: null,
+  p_servicio_id: service.data.id,
+  p_cama: runToken,
+})
+if (initial.error) fail('Crear caso y ronda anterior', initial.error)
+const caseRow = initial.data.case
+const previousRound = { data: initial.data.round }
 const previousDiagnosis = await operator.supabase.from('diagnosticos_ronda').insert({
   ronda_id: previousRound.data.id,
   codigo_cie10: 'Z71.1',
@@ -134,18 +117,21 @@ const previousDiagnosis = await operator.supabase.from('diagnosticos_ronda').ins
 }).select('*').single()
 if (previousDiagnosis.error) fail('Crear diagnóstico anterior', previousDiagnosis.error)
 
-const round = await operator.supabase.from('rondas_proa').insert({
-  ips_id: operator.ips.id,
-  paciente_id: patient.data.id,
-  caso_id: caseRow.id,
-  servicio_id: service.data.id,
-  fecha_hora_ronda: new Date().toISOString(),
-  tipo_valoracion: 'Seguimiento',
-  estado: 'Borrador',
-  profesional_id: operator.user.id,
-  cama: runToken,
-}).select('*').single()
-if (round.error) fail('Crear ronda objetivo', round.error)
+const confirmedPrevious = await operator.supabase.from('rondas_proa').update({
+  estado: 'Confirmada',
+  fecha_confirmacion: new Date().toISOString(),
+}).eq('id', previousRound.data.id)
+if (confirmedPrevious.error) fail('Confirmar ronda anterior', confirmedPrevious.error)
+
+const startedRound = await operator.supabase.rpc('iniciar_ronda_proa', {
+  p_ips_id: operator.ips.id,
+  p_paciente_id: patient.data.id,
+  p_caso_id: caseRow.id,
+  p_servicio_id: service.data.id,
+  p_cama: runToken,
+})
+if (startedRound.error) fail('Crear ronda objetivo', startedRound.error)
+const round = { data: startedRound.data.round }
 
 const payload = {
   round_id: round.data.id,
@@ -248,6 +234,13 @@ const ddd = await operator.supabase.from('mart_ddd').select('consumo_id,aware_ca
 if (ddd.error) fail('Regresión DDD/AWaRe', ddd.error)
 ok('Compatibilidad con auditoría PROA y 6E.3')
 ok('Regresión DDD/AWaRe')
+
+const cleanup = await operator.supabase.from('casos_proa').update({
+  estado: 'Anulado',
+  fecha_cierre: new Date().toISOString(),
+  motivo_cierre: runToken,
+}).eq('id', caseRow.id)
+if (cleanup.error) fail('Anular caso ficticio EST-01', cleanup.error)
 
 await Promise.allSettled([
   operator.supabase.auth.signOut(),

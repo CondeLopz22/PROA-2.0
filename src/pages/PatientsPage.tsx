@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, RefreshCw, Search } from 'lucide-react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { PatientWorkflow } from '../features/patients/PatientWorkflow'
 import { useIps } from '../features/ips/ipsContext'
 import { formatDate, formatDateTime } from '../lib/date'
@@ -9,12 +9,14 @@ import { patientDisplayName } from '../services/patientService'
 import { treatmentName } from '../services/treatmentService'
 import { readableError } from '../services/supabaseErrors'
 import { canWriteOperationalData } from '../services/permissionService'
+import { startCaseRound } from '../services/roundService'
 
 const filters = ['Todos', 'Activos', 'Cerrados'] as const
 
 export function PatientsPage() {
   const { activeIps, userType } = useIps()
   const canWrite = canWriteOperationalData(userType)
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const initialFilter = filters.includes(params.get('estado') as (typeof filters)[number]) ? (params.get('estado') as (typeof filters)[number]) : 'Todos'
   const [filter, setFilter] = useState<(typeof filters)[number]>(initialFilter)
@@ -23,6 +25,25 @@ export function PatientsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showLookup, setShowLookup] = useState(false)
+  const [startingPatientId, setStartingPatientId] = useState<string | null>(null)
+
+  async function startPatientRound(row: PatientDirectoryRow) {
+    if (!activeIps || !canWrite) return
+    setStartingPatientId(row.patient.id)
+    setError(null)
+    try {
+      const result = await startCaseRound({
+        ipsId: activeIps.id,
+        patientId: row.patient.id,
+        caseId: row.activeCase?.id ?? null,
+      })
+      navigate(`/rondas/${result.round.id}`)
+    } catch (startError) {
+      setError(readableError(startError, 'rondas_proa'))
+    } finally {
+      setStartingPatientId(null)
+    }
+  }
 
   async function load() {
     if (!activeIps) return
@@ -134,7 +155,17 @@ export function PatientsPage() {
                       <td>{row.roundCount}</td>
                       <td>{formatDate(row.latestCase?.fecha_apertura)}</td>
                       <td>{formatDate(row.latestCase?.fecha_cierre)}</td>
-                      <td>{canWrite ? <Link className="table-action" to={`/rondas?new=1`}>{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link> : <span className="muted">Solo lectura</span>}</td>
+                      <td>
+                        {canWrite ? (
+                          row.latestActiveCaseRound?.estado === 'Borrador' ? (
+                            <Link className="table-action" to={`/rondas/${row.latestActiveCaseRound.id}`}>Continuar borrador</Link>
+                          ) : (
+                            <button className="button-link table-action" disabled={startingPatientId === row.patient.id} onClick={() => startPatientRound(row)} type="button">
+                              {startingPatientId === row.patient.id ? 'Abriendo...' : row.activeCase ? 'Nueva ronda' : 'Nuevo caso'}
+                            </button>
+                          )
+                        ) : <span className="muted">Solo lectura</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -153,7 +184,13 @@ export function PatientsPage() {
                   <span>Última ronda: {formatDateTime(row.latestRound?.fecha_hora_ronda)} · Rondas: {row.roundCount}</span>
                   <span>Apertura: {formatDate(row.latestCase?.fecha_apertura)} · Cierre: {formatDate(row.latestCase?.fecha_cierre)}</span>
                   {canWrite ? (
-                    <Link className="primary-button mobile-card-action" to="/rondas?new=1">{row.activeCase ? 'Nueva ronda' : 'Valorar'}</Link>
+                    row.latestActiveCaseRound?.estado === 'Borrador' ? (
+                      <Link className="primary-button mobile-card-action" to={`/rondas/${row.latestActiveCaseRound.id}`}>Continuar borrador</Link>
+                    ) : (
+                      <button className="primary-button mobile-card-action" disabled={startingPatientId === row.patient.id} onClick={() => startPatientRound(row)} type="button">
+                        {startingPatientId === row.patient.id ? 'Abriendo...' : row.activeCase ? 'Nueva ronda' : 'Nuevo caso'}
+                      </button>
+                    )
                   ) : (
                     <span className="pill mobile-card-action">Solo lectura</span>
                   )}

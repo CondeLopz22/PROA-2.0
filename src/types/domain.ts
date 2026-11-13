@@ -370,8 +370,10 @@ export type ReevaluationMartRow = {
 export type PatientLookupResult = {
   patient: Patient
   activeCase: CaseProa | null
+  activeCaseCount: number
   historicalCases: CaseProa[]
   latestRound: RoundProa | null
+  latestActiveCaseRound: RoundProa | null
   activeTreatments: Treatment[]
 }
 

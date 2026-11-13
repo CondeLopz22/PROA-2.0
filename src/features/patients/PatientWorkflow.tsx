@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { CalendarClock, CheckCircle2, FilePlus2, Search, Stethoscope, UserPlus } from 'lucide-react'
+import { CalendarClock, FilePlus2, Search, Stethoscope, UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useIps } from '../ips/ipsContext'
 import { ageFromBirthDate, formatDate, formatDateTime } from '../../lib/date'
 import { getIpsServices } from '../../services/ipsService'
 import {
-  createCase,
   createPatient,
   findPatientInIps,
   patientDisplayName,
 } from '../../services/patientService'
-import { createEmptyRound } from '../../services/roundService'
+import { startCaseRound } from '../../services/roundService'
 import { readableError } from '../../services/supabaseErrors'
 import { canWriteOperationalData } from '../../services/permissionService'
 import { getCaseReevaluation } from '../../services/reevaluationService'
@@ -33,7 +32,6 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
   const [notFound, setNotFound] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [createdRound, setCreatedRound] = useState<RoundProa | null>(null)
 
   async function searchPatient(event?: FormEvent) {
     event?.preventDefault()
@@ -42,7 +40,6 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
     setError(null)
     setLookup(null)
     setNotFound(false)
-    setCreatedRound(null)
 
     try {
       const result = await findPatientInIps(activeIps.id, tipo, numero)
@@ -59,20 +56,13 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
     setLookup({
       patient,
       activeCase: null,
+      activeCaseCount: 0,
       historicalCases: [],
       latestRound: null,
+      latestActiveCaseRound: null,
       activeTreatments: [],
     })
     setNotFound(false)
-  }
-
-  async function handleCaseCreated(caso: CaseProa) {
-    if (!lookup) return
-    setLookup({
-      ...lookup,
-      activeCase: caso,
-      historicalCases: lookup.historicalCases,
-    })
   }
 
   return (
@@ -82,7 +72,7 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
           <Search size={20} />
           <div>
             <h2>Identificación</h2>
-            <p>La búsqueda se ejecuta dentro de la IPS activa.</p>
+            <p>{mode === 'round' ? 'Selecciona un paciente para continuar su caso o iniciar una primera valoración.' : 'La búsqueda se ejecuta dentro de la IPS activa.'}</p>
           </div>
         </div>
 
@@ -126,30 +116,12 @@ export function PatientWorkflow({ mode }: { mode: Mode }) {
         <PatientSummary
           key={lookup.patient.id}
           lookup={lookup}
-          mode={mode}
           ipsId={activeIps.id}
-          userId={user.id}
-          onCaseCreated={handleCaseCreated}
           onRoundCreated={(round) => {
-            setCreatedRound(round)
-            if (mode === 'round') navigate(`/rondas/${round.id}`)
+            navigate(`/rondas/${round.id}`)
           }}
           canWrite={canWrite}
         />
-      ) : null}
-
-      {createdRound ? (
-        <article className="panel success-panel">
-          <CheckCircle2 size={24} />
-          <div>
-            <h2>Ronda vacía creada</h2>
-            <p>ID de ronda: {createdRound.id}</p>
-            <p>Estado: {createdRound.estado ?? 'borrador'}</p>
-            <Link className="primary-button" to={`/rondas/${createdRound.id}`}>
-              Abrir formulario clínico
-            </Link>
-          </div>
-        </article>
       ) : null}
     </section>
   )
@@ -238,18 +210,12 @@ function CreatePatientCard({
 
 function PatientSummary({
   lookup,
-  mode,
   ipsId,
-  userId,
-  onCaseCreated,
   onRoundCreated,
   canWrite,
 }: {
   lookup: PatientLookupResult
-  mode: Mode
   ipsId: string
-  userId: string
-  onCaseCreated: (caso: CaseProa) => void
   onRoundCreated: (round: RoundProa) => void
   canWrite: boolean
 }) {
@@ -266,7 +232,6 @@ function PatientSummary({
     [lookup.activeCase, lookup.historicalCases],
   )
   const selectedCase = allCases.find((caso) => caso.id === selectedCaseId) ?? lookup.activeCase
-  const hasActiveCase = Boolean(lookup.activeCase)
   const age = ageFromBirthDate(lookup.patient.fecha_nacimiento)
 
   useEffect(() => {
@@ -294,45 +259,41 @@ function PatientSummary({
 
   async function createNewCase() {
     if (lookup.activeCase) {
-      const confirmed = window.confirm('Este paciente ya tiene un caso PROA activo. ¿Deseas abrir un episodio independiente?')
-      if (!confirmed) return null
+      setError('Este paciente ya tiene un caso PROA activo. Continúa ese caso antes de abrir otro episodio.')
+      return
     }
-
     setLoading(true)
     setError(null)
     try {
-      const caso = await createCase({ ipsId, pacienteId: lookup.patient.id })
-      setSelectedCaseId(caso.id)
-      onCaseCreated(caso)
-      return caso
+      const result = await startCaseRound({
+        ipsId,
+        patientId: lookup.patient.id,
+        serviceId: serviceId || null,
+        bed: cama,
+      })
+      onRoundCreated(result.round)
     } catch (caseError) {
       setError(readableError(caseError))
-      return null
     } finally {
       setLoading(false)
     }
   }
 
   async function openRound() {
-    let caseForRound = selectedCase ?? lookup.activeCase
-    if (!caseForRound) {
-      caseForRound = await createNewCase()
-      if (!caseForRound) return
-    }
+    const caseForRound = lookup.activeCase
+    if (!caseForRound) return createNewCase()
 
     setLoading(true)
     setError(null)
     try {
-      const round = await createEmptyRound({
+      const result = await startCaseRound({
         ipsId,
-        pacienteId: lookup.patient.id,
-        casoId: caseForRound.id,
-        servicioId: serviceId || undefined,
-        cama,
-        tipoValoracion: hasActiveCase ? 'Seguimiento' : 'Primera valoración',
-        profesionalId: userId,
+        patientId: lookup.patient.id,
+        caseId: caseForRound.id,
+        serviceId: serviceId || null,
+        bed: cama,
       })
-      onRoundCreated(round)
+      onRoundCreated(result.round)
     } catch (roundError) {
       setError(readableError(roundError))
     } finally {
@@ -358,6 +319,12 @@ function PatientSummary({
         <SummaryItem label="Caso activo" value={lookup.activeCase ? 'Sí' : 'No'} />
         <SummaryItem label="Última ronda" value={formatDateTime(lookup.latestRound?.fecha_hora_ronda)} />
       </div>
+
+      {lookup.activeCaseCount > 1 ? (
+        <div className="alert warning">
+          Se detectaron {lookup.activeCaseCount} casos activos históricos para este paciente. Se usará el más reciente; la inconsistencia debe revisarse antes de abrir otro caso.
+        </div>
+      ) : null}
 
       {lookup.activeTreatments.length ? (
         <div className="subsection">
@@ -413,7 +380,7 @@ function PatientSummary({
         </div>
       ) : null}
 
-      {mode === 'round' && canWrite ? (
+      {canWrite ? (
         <div className="round-actions">
           <div className="form-grid compact">
             <label>
@@ -434,28 +401,30 @@ function PatientSummary({
           </div>
           <div className="button-row">
             {lookup.activeCase ? (
-              <button className="primary-button" disabled={loading} onClick={openRound} type="button">
-                <CalendarClock size={16} />
-                Continuar caso activo
+              lookup.latestActiveCaseRound?.estado === 'Borrador' ? (
+                <button className="primary-button" disabled={loading} onClick={() => onRoundCreated(lookup.latestActiveCaseRound!)} type="button">
+                  <CalendarClock size={16} />
+                  Continuar caso activo
+                </button>
+              ) : (
+                <button className="primary-button" disabled={loading} onClick={openRound} type="button">
+                  <CalendarClock size={16} />
+                  Nueva ronda
+                </button>
+              )
+            ) : (
+              <button className="primary-button" disabled={loading} onClick={createNewCase} type="button">
+                <FilePlus2 size={16} />
+                Nuevo caso y primera valoración
               </button>
-            ) : null}
-            <button className="secondary-button" disabled={loading} onClick={createNewCase} type="button">
-              <FilePlus2 size={16} />
-              Crear nuevo caso
-            </button>
-            <button
-              className="primary-button"
-              disabled={loading || !selectedCase}
-              onClick={openRound}
-              type="button"
-            >
-              <CalendarClock size={16} />
-              Crear nueva ronda vacía
-            </button>
+            )}
           </div>
+          {selectedCase && selectedCase.id !== lookup.activeCase?.id ? (
+            <div className="alert info">El caso histórico seleccionado es de solo consulta. Para registrar una ronda, continúa el caso activo o abre un nuevo caso cuando no exista uno activo.</div>
+          ) : null}
         </div>
       ) : null}
-      {mode === 'round' && !canWrite ? (
+      {!canWrite ? (
         <div className="alert info">Tu perfil permite consultar este paciente, pero no crear casos ni rondas.</div>
       ) : null}
 
