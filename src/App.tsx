@@ -15,6 +15,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) =
 const DataQualityPage = lazy(() => import('./pages/DataQualityPage').then((module) => ({ default: module.DataQualityPage })))
 const IndicatorsPage = lazy(() => import('./pages/IndicatorsPage').then((module) => ({ default: module.IndicatorsPage })))
 const PatientsPage = lazy(() => import('./pages/PatientsPage').then((module) => ({ default: module.PatientsPage })))
+const PatientRecordPage = lazy(() => import('./pages/PatientRecordPage').then((module) => ({ default: module.PatientRecordPage })))
 const RoundEditorPage = lazy(() => import('./pages/RoundEditorPage').then((module) => ({ default: module.RoundEditorPage })))
 const RoundsPage = lazy(() => import('./pages/RoundsPage').then((module) => ({ default: module.RoundsPage })))
 
@@ -54,6 +55,7 @@ function ProtectedApp() {
             <Route path="/rondas" element={<RoundsPage />} />
             <Route path="/rondas/:roundId" element={<RoundEditorPage />} />
             <Route path="/pacientes" element={<PatientsPage />} />
+            <Route path="/pacientes/:patientId" element={<PatientRecordPage />} />
             <Route path="/ddd" element={<AntimicrobialUsePage />} />
             <Route path="/auditoria" element={<AuditPage />} />
             <Route path="/calidad" element={<DataQualityPage />} />

@@ -24,4 +24,12 @@ describe('responsive CSS contract', () => {
     expect(css).toContain('@media (max-width: 1199px)')
     expect(css).toContain('grid-auto-columns: minmax(300px, calc((100% - 14px) / 2))')
   })
+
+  it('adapta directorio y expediente clínico en tablet y móvil', () => {
+    expect(css).toContain('.patient-kanban')
+    expect(css).toContain('.patient-clinical-card')
+    expect(css).toContain('.patient-record-layout')
+    expect(css).toContain('grid-auto-columns: minmax(86vw, 1fr)')
+    expect(css).toContain('.record-summary-grid')
+  })
 })

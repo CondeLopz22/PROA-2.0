@@ -48,7 +48,8 @@ export function IpsProvider({ children }: { children: React.ReactNode }) {
           setStatus('empty')
           return
         }
-        const firstIps = ips[0]
+        const storedIpsId = window.localStorage.getItem(`proa.activeIps.${userId}`)
+        const firstIps = ips.find((item) => item.id === storedIpsId) ?? ips[0]
         const membership = await getActiveMembershipForIps(userId, firstIps.id)
         if (!mounted) return
         setActiveIpsState(firstIps)
@@ -78,16 +79,22 @@ export function IpsProvider({ children }: { children: React.ReactNode }) {
       userType,
       error,
       setActiveIps: (ips) => {
+        setStatus('loading')
+        setError(null)
         setActiveIpsState(ips)
         if (!user) return
+        window.localStorage.setItem(`proa.activeIps.${user.id}`, ips.id)
         getActiveMembershipForIps(user.id, ips.id)
           .then((membership) => {
             setActiveMembership(membership)
             setUserType(normalizeProductUserType(profile, membership))
+            setStatus('ready')
           })
-          .catch(() => {
+          .catch((switchError) => {
             setActiveMembership(null)
             setUserType('sin_acceso')
+            setError(readableError(switchError))
+            setStatus('error')
           })
       },
     }),

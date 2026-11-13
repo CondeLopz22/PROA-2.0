@@ -1,6 +1,6 @@
 import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, Database, Home, LogOut, Menu, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
 import { useIps } from '../features/ips/ipsContext'
 import { canAccessAdministration } from '../services/permissionService'
@@ -20,6 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { signOut, user } = useAuth()
   const { allowedIps, activeIps, error, setActiveIps, status, userType } = useIps()
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
   const visibleNavigation = navigation.filter((item) => item.to !== '/administracion' || canAccessAdministration(userType))
 
   useEffect(() => {
@@ -71,9 +72,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu size={20} />
           </button>
-          <div className="ips-chip">
+          <div className="ips-chip" aria-live="polite">
             <Building2 size={16} />
-            <span>{status === 'loading' ? 'Cargando IPS...' : activeIps?.nombre ?? 'Sin IPS activa'}</span>
+            <span><small>IPS activa</small><strong>{status === 'loading' ? 'Cambiando contexto...' : activeIps?.nombre ?? 'Sin IPS activa'}</strong></span>
           </div>
           <div className="topbar-actions">
             {allowedIps.length > 1 ? (
@@ -82,7 +83,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 value={activeIps?.id ?? ''}
                 onChange={(event) => {
                   const next = allowedIps.find((ips) => ips.id === event.target.value)
-                  if (next) setActiveIps(next)
+                  if (next && next.id !== activeIps?.id) {
+                    navigate('/', { replace: true })
+                    setOpen(false)
+                    setActiveIps(next)
+                  }
                 }}
               >
                 {allowedIps.map((ips) => (
@@ -113,7 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </section>
           </main>
         ) : (
-          children
+          <div className="ips-context-view" key={activeIps?.id ?? 'sin-ips'}>{children}</div>
         )}
       </div>
     </div>
