@@ -6,6 +6,10 @@ const migration = fs.readFileSync(
   path.resolve('supabase/migrations/20261113064602_est_03b_therapeutic_traceability.sql'),
   'utf8',
 ).toLowerCase()
+const hardeningMigration = fs.readFileSync(
+  path.resolve('supabase/migrations/20261113143350_est_03b_intervention_hardening.sql'),
+  'utf8',
+).toLowerCase()
 
 describe('migración EST-03B', () => {
   it('extiende EST-01 dentro de una sola transacción', () => {
@@ -25,8 +29,28 @@ describe('migración EST-03B', () => {
   })
 
   it('mantiene RLS Multi-IPS y MART security invoker', () => {
-    expect(migration).toContain('public.puede_leer_ips(ips_id)')
-    expect(migration).toContain('public.puede_escribir_operacion_ips(ips_id)')
+    expect(migration).toContain('public.puede_leer_ips(tratamientos_valoracion.ips_id)')
+    expect(migration).toContain('public.puede_escribir_operacion_ips(decisiones_intervencion.ips_id)')
+    expect(migration).toContain('public.puede_escribir_operacion_ips(implementaciones_intervencion.ips_id)')
+    expect(migration).toContain('create or replace function public.validar_integridad_trazabilidad_est03b()')
+    expect(migration).toContain("v_previous_round.estado <> 'borrador'")
     expect(migration).toContain('with (security_invoker = true)')
+  })
+
+  it('califica las relaciones clínicas sin comparaciones ambiguas', () => {
+    expect(migration).toContain('r.ips_id = tratamientos_valoracion.ips_id')
+    expect(migration).toContain('origin_round.ips_id = decisiones_intervencion.ips_id')
+    expect(migration).toContain('origin_round.ips_id = implementaciones_intervencion.ips_id')
+    expect(migration).not.toMatch(/r\.ips_id\s*=\s*ips_id/)
+    expect(migration).not.toMatch(/origin_round\.caso_id\s*=\s*caso_id/)
+  })
+
+  it('endurece intervenciones confirmadas en una migración independiente', () => {
+    expect(hardeningMigration).toContain('create or replace function public.validar_intervencion_clinica_est03b()')
+    expect(hardeningMigration).toContain("v_old_round.estado <> 'borrador'")
+    expect(hardeningMigration).toContain('create policy intervenciones_update')
+    expect(hardeningMigration).toContain('create policy int_trat_insert')
+    expect(hardeningMigration).toContain('with (security_invoker = true)')
+    expect(hardeningMigration.trim().endsWith('commit;')).toBe(true)
   })
 })

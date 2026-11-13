@@ -93,38 +93,178 @@ alter table public.tratamientos_valoracion enable row level security;
 alter table public.decisiones_intervencion enable row level security;
 alter table public.implementaciones_intervencion enable row level security;
 
+create or replace function public.validar_integridad_trazabilidad_est03b()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $function$
+declare
+  v_round public.rondas_proa%rowtype;
+  v_previous_round public.rondas_proa%rowtype;
+  v_treatment public.tratamientos_antimicrobianos%rowtype;
+  v_intervention public.intervenciones_proa%rowtype;
+  v_origin_round public.rondas_proa%rowtype;
+begin
+  if tg_op = 'UPDATE' then
+    if new.ips_id is distinct from old.ips_id
+       or new.caso_id is distinct from old.caso_id
+       or new.ronda_id is distinct from old.ronda_id then
+      raise exception 'EST03B_CONTEXT: No se puede trasladar trazabilidad entre IPS, casos o rondas';
+    end if;
+    if tg_table_name = 'tratamientos_valoracion' then
+      if new.paciente_id is distinct from old.paciente_id
+         or new.tratamiento_id is distinct from old.tratamiento_id then
+        raise exception 'EST03B_CONTEXT: No se puede cambiar el paciente o tratamiento de una valoración';
+      end if;
+    else
+      if new.intervencion_id is distinct from old.intervencion_id
+         or new.profesional_id is distinct from old.profesional_id then
+        raise exception 'EST03B_CONTEXT: No se puede cambiar la intervención o autor de un registro histórico';
+      end if;
+    end if;
+
+    select * into v_previous_round
+    from public.rondas_proa
+    where id = old.ronda_id;
+    if not found or v_previous_round.estado <> 'Borrador' then
+      raise exception 'EST03B_CONFIRMED: Los registros de una ronda confirmada son inmutables';
+    end if;
+  end if;
+
+  select * into v_round
+  from public.rondas_proa
+  where id = new.ronda_id;
+  if not found or v_round.estado <> 'Borrador'
+     or v_round.ips_id <> new.ips_id
+     or v_round.caso_id <> new.caso_id then
+    raise exception 'EST03B_CONTEXT: La ronda no pertenece a la IPS y caso indicados o no admite cambios';
+  end if;
+
+  if tg_table_name = 'tratamientos_valoracion' then
+    if v_round.paciente_id <> new.paciente_id then
+      raise exception 'EST03B_CONTEXT: El paciente de la valoración no coincide con la ronda';
+    end if;
+    select * into v_treatment
+    from public.tratamientos_antimicrobianos
+    where id = new.tratamiento_id;
+    if not found
+       or v_treatment.ips_id <> new.ips_id
+       or v_treatment.paciente_id <> new.paciente_id
+       or v_treatment.caso_id <> new.caso_id then
+      raise exception 'EST03B_CONTEXT: El tratamiento valorado no pertenece al mismo paciente, caso e IPS';
+    end if;
+  else
+    if auth.uid() is not null and new.profesional_id <> auth.uid() then
+      raise exception 'EST03B_ACCESS: El profesional debe corresponder a la sesión autenticada';
+    end if;
+    select * into v_intervention
+    from public.intervenciones_proa
+    where id = new.intervencion_id;
+    if not found then
+      raise exception 'EST03B_CONTEXT: La intervención no existe';
+    end if;
+    select * into v_origin_round
+    from public.rondas_proa
+    where id = v_intervention.ronda_id;
+    if not found
+       or v_intervention.ips_id <> new.ips_id
+       or v_origin_round.ips_id <> new.ips_id
+       or v_origin_round.caso_id <> new.caso_id then
+      raise exception 'EST03B_CONTEXT: La intervención no pertenece al mismo caso e IPS';
+    end if;
+
+    if tg_table_name = 'implementaciones_intervencion'
+       and new.tratamiento_resultante_id is not null then
+      select * into v_treatment
+      from public.tratamientos_antimicrobianos
+      where id = new.tratamiento_resultante_id;
+      if not found
+         or v_treatment.ips_id <> new.ips_id
+         or v_treatment.caso_id <> new.caso_id then
+        raise exception 'EST03B_CONTEXT: El tratamiento implementado no pertenece al mismo caso e IPS';
+      end if;
+    end if;
+  end if;
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists trg_validar_tratamientos_valoracion_est03b on public.tratamientos_valoracion;
+create trigger trg_validar_tratamientos_valoracion_est03b
+before insert or update on public.tratamientos_valoracion
+for each row execute function public.validar_integridad_trazabilidad_est03b();
+
+drop trigger if exists trg_validar_decisiones_intervencion_est03b on public.decisiones_intervencion;
+create trigger trg_validar_decisiones_intervencion_est03b
+before insert or update on public.decisiones_intervencion
+for each row execute function public.validar_integridad_trazabilidad_est03b();
+
+drop trigger if exists trg_validar_implementaciones_intervencion_est03b on public.implementaciones_intervencion;
+create trigger trg_validar_implementaciones_intervencion_est03b
+before insert or update on public.implementaciones_intervencion
+for each row execute function public.validar_integridad_trazabilidad_est03b();
+
 drop policy if exists tratamientos_valoracion_select on public.tratamientos_valoracion;
 drop policy if exists tratamientos_valoracion_insert on public.tratamientos_valoracion;
 drop policy if exists tratamientos_valoracion_update on public.tratamientos_valoracion;
 create policy tratamientos_valoracion_select on public.tratamientos_valoracion for select to authenticated
-  using (public.puede_leer_ips(ips_id));
+  using (public.puede_leer_ips(tratamientos_valoracion.ips_id));
 create policy tratamientos_valoracion_insert on public.tratamientos_valoracion for insert to authenticated
   with check (
-    public.puede_escribir_operacion_ips(ips_id)
+    public.puede_escribir_operacion_ips(tratamientos_valoracion.ips_id)
     and exists (
       select 1 from public.rondas_proa r
-      where r.id = ronda_id and r.ips_id = ips_id and r.paciente_id = paciente_id
-        and r.caso_id = caso_id and r.estado = 'Borrador'
+      where r.id = tratamientos_valoracion.ronda_id
+        and r.ips_id = tratamientos_valoracion.ips_id
+        and r.paciente_id = tratamientos_valoracion.paciente_id
+        and r.caso_id = tratamientos_valoracion.caso_id
+        and r.estado = 'Borrador'
     )
     and exists (
       select 1 from public.tratamientos_antimicrobianos t
-      where t.id = tratamiento_id and t.ips_id = ips_id
-        and t.paciente_id = paciente_id and t.caso_id = caso_id
+      where t.id = tratamientos_valoracion.tratamiento_id
+        and t.ips_id = tratamientos_valoracion.ips_id
+        and t.paciente_id = tratamientos_valoracion.paciente_id
+        and t.caso_id = tratamientos_valoracion.caso_id
     )
   );
 create policy tratamientos_valoracion_update on public.tratamientos_valoracion for update to authenticated
-  using (public.puede_escribir_operacion_ips(ips_id))
-  with check (
-    public.puede_escribir_operacion_ips(ips_id)
+  using (
+    public.puede_escribir_operacion_ips(tratamientos_valoracion.ips_id)
     and exists (
       select 1 from public.rondas_proa r
-      where r.id = ronda_id and r.ips_id = ips_id and r.paciente_id = paciente_id
-        and r.caso_id = caso_id and r.estado = 'Borrador'
+      where r.id = tratamientos_valoracion.ronda_id
+        and r.ips_id = tratamientos_valoracion.ips_id
+        and r.paciente_id = tratamientos_valoracion.paciente_id
+        and r.caso_id = tratamientos_valoracion.caso_id
+        and r.estado = 'Borrador'
     )
     and exists (
       select 1 from public.tratamientos_antimicrobianos t
-      where t.id = tratamiento_id and t.ips_id = ips_id
-        and t.paciente_id = paciente_id and t.caso_id = caso_id
+      where t.id = tratamientos_valoracion.tratamiento_id
+        and t.ips_id = tratamientos_valoracion.ips_id
+        and t.paciente_id = tratamientos_valoracion.paciente_id
+        and t.caso_id = tratamientos_valoracion.caso_id
+    )
+  )
+  with check (
+    public.puede_escribir_operacion_ips(tratamientos_valoracion.ips_id)
+    and exists (
+      select 1 from public.rondas_proa r
+      where r.id = tratamientos_valoracion.ronda_id
+        and r.ips_id = tratamientos_valoracion.ips_id
+        and r.paciente_id = tratamientos_valoracion.paciente_id
+        and r.caso_id = tratamientos_valoracion.caso_id
+        and r.estado = 'Borrador'
+    )
+    and exists (
+      select 1 from public.tratamientos_antimicrobianos t
+      where t.id = tratamientos_valoracion.tratamiento_id
+        and t.ips_id = tratamientos_valoracion.ips_id
+        and t.paciente_id = tratamientos_valoracion.paciente_id
+        and t.caso_id = tratamientos_valoracion.caso_id
     )
   );
 
@@ -132,26 +272,64 @@ drop policy if exists decisiones_intervencion_select on public.decisiones_interv
 drop policy if exists decisiones_intervencion_insert on public.decisiones_intervencion;
 drop policy if exists decisiones_intervencion_update on public.decisiones_intervencion;
 create policy decisiones_intervencion_select on public.decisiones_intervencion for select to authenticated
-  using (public.puede_leer_ips(ips_id));
+  using (public.puede_leer_ips(decisiones_intervencion.ips_id));
 create policy decisiones_intervencion_insert on public.decisiones_intervencion for insert to authenticated
   with check (
-    public.puede_escribir_operacion_ips(ips_id) and profesional_id = auth.uid()
-    and exists (select 1 from public.rondas_proa r where r.id = ronda_id and r.ips_id = ips_id and r.caso_id = caso_id and r.estado = 'Borrador')
+    public.puede_escribir_operacion_ips(decisiones_intervencion.ips_id)
+    and decisiones_intervencion.profesional_id = auth.uid()
+    and exists (
+      select 1 from public.rondas_proa r
+      where r.id = decisiones_intervencion.ronda_id
+        and r.ips_id = decisiones_intervencion.ips_id
+        and r.caso_id = decisiones_intervencion.caso_id
+        and r.estado = 'Borrador'
+    )
     and exists (
       select 1 from public.intervenciones_proa i
       join public.rondas_proa origin_round on origin_round.id = i.ronda_id
-      where i.id = intervencion_id and i.ips_id = ips_id and origin_round.caso_id = caso_id
+      where i.id = decisiones_intervencion.intervencion_id
+        and i.ips_id = decisiones_intervencion.ips_id
+        and origin_round.ips_id = decisiones_intervencion.ips_id
+        and origin_round.caso_id = decisiones_intervencion.caso_id
     )
   );
 create policy decisiones_intervencion_update on public.decisiones_intervencion for update to authenticated
-  using (public.puede_escribir_operacion_ips(ips_id) and profesional_id = auth.uid())
-  with check (
-    public.puede_escribir_operacion_ips(ips_id) and profesional_id = auth.uid()
-    and exists (select 1 from public.rondas_proa r where r.id = ronda_id and r.ips_id = ips_id and r.caso_id = caso_id and r.estado = 'Borrador')
+  using (
+    public.puede_escribir_operacion_ips(decisiones_intervencion.ips_id)
+    and decisiones_intervencion.profesional_id = auth.uid()
+    and exists (
+      select 1 from public.rondas_proa r
+      where r.id = decisiones_intervencion.ronda_id
+        and r.ips_id = decisiones_intervencion.ips_id
+        and r.caso_id = decisiones_intervencion.caso_id
+        and r.estado = 'Borrador'
+    )
     and exists (
       select 1 from public.intervenciones_proa i
       join public.rondas_proa origin_round on origin_round.id = i.ronda_id
-      where i.id = intervencion_id and i.ips_id = ips_id and origin_round.caso_id = caso_id
+      where i.id = decisiones_intervencion.intervencion_id
+        and i.ips_id = decisiones_intervencion.ips_id
+        and origin_round.ips_id = decisiones_intervencion.ips_id
+        and origin_round.caso_id = decisiones_intervencion.caso_id
+    )
+  )
+  with check (
+    public.puede_escribir_operacion_ips(decisiones_intervencion.ips_id)
+    and decisiones_intervencion.profesional_id = auth.uid()
+    and exists (
+      select 1 from public.rondas_proa r
+      where r.id = decisiones_intervencion.ronda_id
+        and r.ips_id = decisiones_intervencion.ips_id
+        and r.caso_id = decisiones_intervencion.caso_id
+        and r.estado = 'Borrador'
+    )
+    and exists (
+      select 1 from public.intervenciones_proa i
+      join public.rondas_proa origin_round on origin_round.id = i.ronda_id
+      where i.id = decisiones_intervencion.intervencion_id
+        and i.ips_id = decisiones_intervencion.ips_id
+        and origin_round.ips_id = decisiones_intervencion.ips_id
+        and origin_round.caso_id = decisiones_intervencion.caso_id
     )
   );
 
@@ -159,26 +337,64 @@ drop policy if exists implementaciones_intervencion_select on public.implementac
 drop policy if exists implementaciones_intervencion_insert on public.implementaciones_intervencion;
 drop policy if exists implementaciones_intervencion_update on public.implementaciones_intervencion;
 create policy implementaciones_intervencion_select on public.implementaciones_intervencion for select to authenticated
-  using (public.puede_leer_ips(ips_id));
+  using (public.puede_leer_ips(implementaciones_intervencion.ips_id));
 create policy implementaciones_intervencion_insert on public.implementaciones_intervencion for insert to authenticated
   with check (
-    public.puede_escribir_operacion_ips(ips_id) and profesional_id = auth.uid()
-    and exists (select 1 from public.rondas_proa r where r.id = ronda_id and r.ips_id = ips_id and r.caso_id = caso_id and r.estado = 'Borrador')
+    public.puede_escribir_operacion_ips(implementaciones_intervencion.ips_id)
+    and implementaciones_intervencion.profesional_id = auth.uid()
+    and exists (
+      select 1 from public.rondas_proa r
+      where r.id = implementaciones_intervencion.ronda_id
+        and r.ips_id = implementaciones_intervencion.ips_id
+        and r.caso_id = implementaciones_intervencion.caso_id
+        and r.estado = 'Borrador'
+    )
     and exists (
       select 1 from public.intervenciones_proa i
       join public.rondas_proa origin_round on origin_round.id = i.ronda_id
-      where i.id = intervencion_id and i.ips_id = ips_id and origin_round.caso_id = caso_id
+      where i.id = implementaciones_intervencion.intervencion_id
+        and i.ips_id = implementaciones_intervencion.ips_id
+        and origin_round.ips_id = implementaciones_intervencion.ips_id
+        and origin_round.caso_id = implementaciones_intervencion.caso_id
     )
   );
 create policy implementaciones_intervencion_update on public.implementaciones_intervencion for update to authenticated
-  using (public.puede_escribir_operacion_ips(ips_id) and profesional_id = auth.uid())
-  with check (
-    public.puede_escribir_operacion_ips(ips_id) and profesional_id = auth.uid()
-    and exists (select 1 from public.rondas_proa r where r.id = ronda_id and r.ips_id = ips_id and r.caso_id = caso_id and r.estado = 'Borrador')
+  using (
+    public.puede_escribir_operacion_ips(implementaciones_intervencion.ips_id)
+    and implementaciones_intervencion.profesional_id = auth.uid()
+    and exists (
+      select 1 from public.rondas_proa r
+      where r.id = implementaciones_intervencion.ronda_id
+        and r.ips_id = implementaciones_intervencion.ips_id
+        and r.caso_id = implementaciones_intervencion.caso_id
+        and r.estado = 'Borrador'
+    )
     and exists (
       select 1 from public.intervenciones_proa i
       join public.rondas_proa origin_round on origin_round.id = i.ronda_id
-      where i.id = intervencion_id and i.ips_id = ips_id and origin_round.caso_id = caso_id
+      where i.id = implementaciones_intervencion.intervencion_id
+        and i.ips_id = implementaciones_intervencion.ips_id
+        and origin_round.ips_id = implementaciones_intervencion.ips_id
+        and origin_round.caso_id = implementaciones_intervencion.caso_id
+    )
+  )
+  with check (
+    public.puede_escribir_operacion_ips(implementaciones_intervencion.ips_id)
+    and implementaciones_intervencion.profesional_id = auth.uid()
+    and exists (
+      select 1 from public.rondas_proa r
+      where r.id = implementaciones_intervencion.ronda_id
+        and r.ips_id = implementaciones_intervencion.ips_id
+        and r.caso_id = implementaciones_intervencion.caso_id
+        and r.estado = 'Borrador'
+    )
+    and exists (
+      select 1 from public.intervenciones_proa i
+      join public.rondas_proa origin_round on origin_round.id = i.ronda_id
+      where i.id = implementaciones_intervencion.intervencion_id
+        and i.ips_id = implementaciones_intervencion.ips_id
+        and origin_round.ips_id = implementaciones_intervencion.ips_id
+        and origin_round.caso_id = implementaciones_intervencion.caso_id
     )
   );
 
@@ -256,10 +472,15 @@ begin
       when 'No aceptada' then 'No'
       else 'Parcialmente'
     end;
-    update public.intervenciones_proa
-    set aceptacion = v_acceptance,
-        motivo_no_aceptacion = case when v_acceptance in ('No', 'Parcialmente') then nullif(btrim(p_justificacion), '') end
-    where id = p_intervencion_id;
+    -- La intervención de una ronda confirmada es historia clínica inmutable.
+    -- En seguimientos posteriores, la decisión vigente vive en la tabla
+    -- longitudinal y en el MART, sin reescribir la ronda de origen.
+    if v_origin_round.estado = 'Borrador' then
+      update public.intervenciones_proa
+      set aceptacion = v_acceptance,
+          motivo_no_aceptacion = case when v_acceptance in ('No', 'Parcialmente') then nullif(btrim(p_justificacion), '') end
+      where id = p_intervencion_id;
+    end if;
   end if;
 
   if p_estado_implementacion is not null then
@@ -497,7 +718,14 @@ select
   i.accion_terapeutica,
   i.recomendacion,
   i.descripcion_recomendacion,
-  i.aceptacion as aceptacion_actual,
+  coalesce(
+    case d.decision
+      when 'Aceptada' then 'Sí'
+      when 'No aceptada' then 'No'
+      when 'Parcialmente aceptada' then 'Parcialmente'
+    end,
+    i.aceptacion
+  ) as aceptacion_actual,
   d.decision,
   d.fecha_decision,
   d.profesional_id as profesional_decision_id,
