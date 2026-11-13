@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import type { ProaIntervention, RoundProa, Treatment, UUID } from '../types/domain'
+import type { ImplementationStatus, ProaIntervention, RoundProa, TherapeuticRecommendationAction, Treatment, TreatingDecisionValue, UUID } from '../types/domain'
 
 export type InterventionDraft = {
   id?: UUID
@@ -12,6 +12,19 @@ export type InterventionDraft = {
   origenIntervencion: string
   recomendacion: string
   descripcionRecomendacion: string
+  accionTerapeutica: TherapeuticRecommendationAction | ''
+  antimicrobianoRecomendadoId: UUID | ''
+  antimicrobianoRecomendado: string
+  dosisRecomendada: string
+  unidadRecomendada: string
+  viaRecomendada: string
+  frecuenciaRecomendada: string
+  decisionMedico: TreatingDecisionValue | ''
+  justificacionDecision: string
+  estadoImplementacion: ImplementationStatus | ''
+  detalleImplementacion: string
+  fechaImplementacion: string
+  tratamientoImplementadoId: UUID | ''
   aceptacion: 'Sí' | 'No' | 'Parcialmente' | 'Pendiente' | ''
   motivoNoAceptacion: string
   cumplimientoGuia: 'Cumple' | 'No cumple' | 'No aplica' | 'No evaluable' | ''
@@ -72,6 +85,19 @@ export function emptyInterventionDraft(): InterventionDraft {
     origenIntervencion: '',
     recomendacion: '',
     descripcionRecomendacion: '',
+    accionTerapeutica: '',
+    antimicrobianoRecomendadoId: '',
+    antimicrobianoRecomendado: '',
+    dosisRecomendada: '',
+    unidadRecomendada: '',
+    viaRecomendada: '',
+    frecuenciaRecomendada: '',
+    decisionMedico: '',
+    justificacionDecision: '',
+    estadoImplementacion: '',
+    detalleImplementacion: '',
+    fechaImplementacion: '',
+    tratamientoImplementadoId: '',
     aceptacion: '',
     motivoNoAceptacion: '',
     cumplimientoGuia: '',
@@ -97,6 +123,19 @@ export function interventionDraftFromBundle(bundle?: InterventionBundle | null):
     origenIntervencion: row.origen_intervencion ?? '',
     recomendacion: row.recomendacion ?? '',
     descripcionRecomendacion: row.descripcion_recomendacion ?? '',
+    accionTerapeutica: row.accion_terapeutica ?? '',
+    antimicrobianoRecomendadoId: row.antimicrobiano_recomendado_id ?? '',
+    antimicrobianoRecomendado: row.antimicrobiano_recomendado ?? '',
+    dosisRecomendada: row.dosis_recomendada === null || row.dosis_recomendada === undefined ? '' : String(row.dosis_recomendada),
+    unidadRecomendada: row.unidad_recomendada ?? '',
+    viaRecomendada: row.via_recomendada ?? '',
+    frecuenciaRecomendada: row.frecuencia_recomendada ?? '',
+    decisionMedico: row.aceptacion === 'Sí' ? 'Aceptada' : row.aceptacion === 'No' ? 'No aceptada' : row.aceptacion === 'Parcialmente' ? 'Parcialmente aceptada' : '',
+    justificacionDecision: row.motivo_no_aceptacion ?? '',
+    estadoImplementacion: '',
+    detalleImplementacion: '',
+    fechaImplementacion: '',
+    tratamientoImplementadoId: '',
     aceptacion: (row.aceptacion as InterventionDraft['aceptacion']) ?? '',
     motivoNoAceptacion: row.motivo_no_aceptacion ?? '',
     cumplimientoGuia: (row.cumplimiento_guia as InterventionDraft['cumplimientoGuia']) ?? '',

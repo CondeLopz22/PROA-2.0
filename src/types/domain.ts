@@ -62,6 +62,7 @@ export type RoundProa = {
   tipo_terapia?: 'Empírica' | 'Dirigida' | 'Profiláctica' | string | null
   terapia_dirigida_por_microbiologia?: boolean | null
   tipo_profilaxis?: 'Quirúrgica' | 'Médica' | 'Otra' | string | null
+  sin_antimicrobianos_valoracion?: boolean | null
   evolucion_clinica?: 'Mejoría' | 'Estable' | 'Deterioro' | 'No valorable' | string | null
   equipo_valorador?: string | null
   estado?: string | null
@@ -95,6 +96,28 @@ export type Treatment = {
   duracion_prevista_dias?: number | null
   estado?: string | null
   fecha_ultima_modificacion?: string | null
+  indicacion_clinica?: string | null
+  tipo_tratamiento?: 'Empírico' | 'Dirigido' | string | null
+}
+
+export type TreatmentAssessment = {
+  id: UUID
+  ips_id: UUID
+  paciente_id: UUID
+  caso_id: UUID
+  ronda_id: UUID
+  tratamiento_id: UUID
+  antimicrobiano_id?: UUID | null
+  antimicrobiano: string
+  dosis?: number | string | null
+  unidad?: string | null
+  via?: string | null
+  frecuencia?: string | null
+  fecha_inicio?: string | null
+  indicacion_clinica?: string | null
+  tipo_tratamiento?: 'Empírico' | 'Dirigido' | string | null
+  estado_al_valorar: string
+  fecha_registro?: string | null
 }
 
 export type DiagnosisRound = {
@@ -249,6 +272,42 @@ export type ProaIntervention = {
   fecha_seguimiento?: string | null
   motivo_seguimiento?: string | null
   fecha_creacion?: string | null
+  accion_terapeutica?: TherapeuticRecommendationAction | null
+  antimicrobiano_recomendado_id?: UUID | null
+  antimicrobiano_recomendado?: string | null
+  dosis_recomendada?: number | string | null
+  unidad_recomendada?: string | null
+  via_recomendada?: string | null
+  frecuencia_recomendada?: string | null
+}
+
+export type TherapeuticRecommendationAction = 'Continuar' | 'Ajustar' | 'Suspender' | 'Sustituir' | 'Iniciar tratamiento'
+export type TreatingDecisionValue = 'Aceptada' | 'No aceptada' | 'Parcialmente aceptada'
+export type ImplementationStatus = 'Implementación parcial' | 'Implementada' | 'No implementada'
+
+export type InterventionDecision = {
+  id: UUID
+  ips_id: UUID
+  caso_id: UUID
+  intervencion_id: UUID
+  ronda_id: UUID
+  decision: TreatingDecisionValue
+  justificacion?: string | null
+  profesional_id: UUID
+  fecha_decision: string
+}
+
+export type InterventionImplementation = {
+  id: UUID
+  ips_id: UUID
+  caso_id: UUID
+  intervencion_id: UUID
+  ronda_id: UUID
+  estado: ImplementationStatus
+  detalle?: string | null
+  tratamiento_resultante_id?: UUID | null
+  profesional_id: UUID
+  fecha_implementacion: string
 }
 
 export type InterventionTreatment = {

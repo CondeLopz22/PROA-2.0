@@ -15,6 +15,9 @@ const record: PatientRecordBundle = {
   treatments: [{ id: 'tx-a', ips_id: 'ips-1', paciente_id: 'patient-1', caso_id: 'case-a', ronda_id: 'round-a', antimicrobiano: 'CEFTRIAXONA', estado: 'Activo', fecha_inicio: '2026-10-02' }],
   microbiology: [{ id: 'micro-a', ips_id: 'ips-1', caso_id: 'case-a', ronda_id: 'round-a', tipo_muestra: 'Hemocultivo', resultado_general: 'Positivo', microorganismo: 'E. coli', fecha_resultado: '2026-10-04T08:00:00Z' }],
   interventions: [{ id: 'int-a', ips_id: 'ips-1', ronda_id: 'round-a', hubo_intervencion: true, tipo_intervencion: 'Optimización', fecha_creacion: '2026-10-04T09:00:00Z' }],
+  treatmentAssessments: [],
+  interventionDecisions: [],
+  interventionImplementations: [],
   services: [],
 }
 

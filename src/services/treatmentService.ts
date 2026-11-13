@@ -11,6 +11,8 @@ export type NewTreatmentDraft = {
   via: string
   fechaInicio: string
   duracionPrevistaDias?: string
+  indicacionClinica: string
+  tipoTratamiento: 'Empírico' | 'Dirigido' | ''
 }
 
 export type TreatmentModificationDraft = {

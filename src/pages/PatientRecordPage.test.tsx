@@ -21,7 +21,7 @@ describe('PatientRecordPage', () => {
       cases: [{ id: 'case-1', ips_id: 'ips-1', paciente_id: 'patient-1', estado: 'Activo', fecha_apertura: '2026-10-01' }],
       rounds: [{ id: 'round-1', ips_id: 'ips-1', paciente_id: 'patient-1', caso_id: 'case-1', estado: 'Confirmada', tipo_valoracion: 'Primera valoración', fecha_hora_ronda: '2026-10-02T12:00:00Z' }],
       diagnoses: [{ id: 'diag-1', ronda_id: 'round-1', codigo_cie10: 'A49.9', descripcion_cie10: 'Infección', fecha_creacion: '2026-10-02T12:30:00Z' }],
-      treatments: [], microbiology: [], interventions: [], services: [],
+      treatments: [], microbiology: [], interventions: [], treatmentAssessments: [], interventionDecisions: [], interventionImplementations: [], services: [],
     })
     mocks.startCaseRound.mockResolvedValue({ round: { id: 'round-2' }, case: { id: 'case-1' }, caseCreated: false, draftReused: false })
   })

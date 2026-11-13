@@ -12,6 +12,7 @@ import {
   saveClinicalRoundTransaction,
   type ClinicalSaveInput,
 } from './clinicalSaveService'
+import { emptyInterventionDraft } from './interventionService'
 
 function input(): ClinicalSaveInput {
   return {
@@ -37,6 +38,8 @@ function input(): ClinicalSaveInput {
       categoria_proa_id: null,
     }],
     treatmentActions: [{ treatmentId: 'treatment-1', draft: { kind: 'Continuar' } }],
+    treatmentAssessment: [{ treatmentId: 'treatment-1', indication: 'Neumonía', therapyType: 'Empírico' }],
+    noAntimicrobialsAtAssessment: false,
     newTreatments: [{
       antimicrobialId: 'antimicrobial-1',
       antimicrobialName: 'CEFTRIAXONA',
@@ -46,6 +49,8 @@ function input(): ClinicalSaveInput {
       via: 'IV',
       fechaInicio: '2026-10-13',
       duracionPrevistaDias: '5',
+      indicacionClinica: 'Sepsis',
+      tipoTratamiento: 'Empírico',
     }],
     microbiology: {
       status: 'No',
@@ -64,23 +69,11 @@ function input(): ClinicalSaveInput {
       impactoConducta: '',
     },
     intervention: {
+      ...emptyInterventionDraft(),
       huboIntervencion: 'No',
-      tipoIntervencionId: '',
-      tipoIntervencion: '',
-      tratamientosRelacionados: [],
       motivoNoIntervencion: 'Otro',
       descripcionMotivoNoIntervencion: 'Decisión documentada por el profesional',
-      origenIntervencion: '',
-      recomendacion: '',
-      descripcionRecomendacion: '',
-      aceptacion: '',
-      motivoNoAceptacion: '',
       cumplimientoGuia: 'No evaluable',
-      motivoNoCumplimiento: '',
-      diasAhorrados: null,
-      requiereSeguimiento: false,
-      fechaSeguimiento: '',
-      motivoSeguimiento: '',
     },
     note: { generatedText: 'Nota generada', finalText: 'Nota final' },
   }
@@ -98,7 +91,7 @@ describe('guardado clínico transaccional', () => {
     await saveClinicalRoundTransaction(input())
 
     expect(rpc).toHaveBeenCalledTimes(1)
-    expect(rpc).toHaveBeenCalledWith('guardar_ronda_clinica', {
+    expect(rpc).toHaveBeenCalledWith('guardar_ronda_clinica_trazable', {
       p_payload: expect.objectContaining({
         round_id: 'round-1',
         diagnoses: expect.any(Array),
@@ -117,6 +110,48 @@ describe('guardado clínico transaccional', () => {
     const value = input()
     value.intervention = null
     expect(buildClinicalSavePayload(value)).not.toHaveProperty('intervention')
+  })
+
+  it('separa recomendación, decisión inmediata e implementación efectiva', () => {
+    const value = input()
+    value.intervention = {
+      ...emptyInterventionDraft(),
+      huboIntervencion: 'Sí',
+      accionTerapeutica: 'Ajustar',
+      descripcionRecomendacion: 'Ajustar el esquema según valoración PROA',
+      decisionMedico: 'Aceptada',
+      estadoImplementacion: 'Implementación parcial',
+      fechaImplementacion: '2026-10-14',
+      detalleImplementacion: 'Se ajustó parcialmente el esquema',
+    }
+    const payload = buildClinicalSavePayload(value)
+    expect(payload.intervention).toEqual(expect.objectContaining({
+      therapeutic_action: 'Ajustar',
+      decision: 'Aceptada',
+      implementation_status: 'Implementación parcial',
+      implementation_date: '2026-10-14',
+    }))
+  })
+
+  it('registra confirmaciones posteriores sin duplicar la intervención original', () => {
+    const value = input()
+    value.interventionFollowUps = [{
+      interventionId: 'intervention-previous',
+      decision: 'Parcialmente aceptada',
+      decisionReason: 'Se acepta solo el ajuste de frecuencia',
+      implementationStatus: 'Implementada',
+      implementationDetail: 'Verificado en seguimiento',
+      implementationDate: '2026-10-15',
+      implementedTreatmentId: 'treatment-1',
+    }]
+    expect(buildClinicalSavePayload(value).intervention_followups).toEqual([
+      expect.objectContaining({
+        intervention_id: 'intervention-previous',
+        decision: 'Parcialmente aceptada',
+        implementation_status: 'Implementada',
+        implemented_treatment_id: 'treatment-1',
+      }),
+    ])
   })
 
   it('traduce errores por bloque sin mostrar detalles internos', () => {

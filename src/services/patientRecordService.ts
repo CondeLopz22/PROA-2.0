@@ -2,12 +2,15 @@ import { supabase } from '../lib/supabase'
 import type {
   CaseProa,
   DiagnosisRound,
+  InterventionDecision,
+  InterventionImplementation,
   Microbiology,
   Patient,
   ProaIntervention,
   RoundProa,
   ServiceIps,
   Treatment,
+  TreatmentAssessment,
   UUID,
 } from '../types/domain'
 
@@ -19,12 +22,15 @@ export type PatientRecordBundle = {
   treatments: Treatment[]
   microbiology: Microbiology[]
   interventions: ProaIntervention[]
+  treatmentAssessments: TreatmentAssessment[]
+  interventionDecisions: InterventionDecision[]
+  interventionImplementations: InterventionImplementation[]
   services: ServiceIps[]
 }
 
 export type PatientTimelineEvent = {
   id: string
-  kind: 'Caso' | 'Ronda' | 'Diagnóstico' | 'Tratamiento' | 'Microbiología' | 'Intervención'
+  kind: 'Caso' | 'Ronda' | 'Diagnóstico' | 'Tratamiento' | 'Valoración terapéutica' | 'Microbiología' | 'Intervención' | 'Decisión' | 'Implementación'
   title: string
   summary: string
   occurredAt: string
@@ -72,6 +78,16 @@ export async function getPatientRecord(ipsId: UUID, patientId: UUID): Promise<Pa
   if (microbiologyResult.error) throw microbiologyResult.error
   if (interventionsResult.error) throw interventionsResult.error
 
+  const [assessmentsResult, decisionsResult, implementationsResult] = await Promise.all([
+    caseIds.length ? supabase.from('tratamientos_valoracion').select('*').in('caso_id', caseIds).order('fecha_registro', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    caseIds.length ? supabase.from('decisiones_intervencion').select('*').in('caso_id', caseIds).order('fecha_decision', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    caseIds.length ? supabase.from('implementaciones_intervencion').select('*').in('caso_id', caseIds).order('fecha_implementacion', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+  ])
+  const allowedMissing = (error: { code?: string } | null) => !error || error.code === 'PGRST205' || error.code === '42P01'
+  if (!allowedMissing(assessmentsResult.error)) throw assessmentsResult.error
+  if (!allowedMissing(decisionsResult.error)) throw decisionsResult.error
+  if (!allowedMissing(implementationsResult.error)) throw implementationsResult.error
+
   return {
     patient: patientResult.data as Patient,
     cases,
@@ -80,6 +96,9 @@ export async function getPatientRecord(ipsId: UUID, patientId: UUID): Promise<Pa
     treatments: (treatmentsResult.data ?? []) as Treatment[],
     microbiology: (microbiologyResult.data ?? []) as Microbiology[],
     interventions: (interventionsResult.data ?? []) as ProaIntervention[],
+    treatmentAssessments: (assessmentsResult.data ?? []) as TreatmentAssessment[],
+    interventionDecisions: (decisionsResult.data ?? []) as InterventionDecision[],
+    interventionImplementations: (implementationsResult.data ?? []) as InterventionImplementation[],
     services: (servicesResult.data ?? []) as ServiceIps[],
   }
 }
@@ -103,12 +122,29 @@ export function buildPatientTimeline(record: PatientRecordBundle): PatientTimeli
   record.treatments.forEach((item) => {
     if (item.caso_id) add({ id: `treatment-${item.id}`, kind: 'Tratamiento', title: item.antimicrobiano ?? 'Antimicrobiano', summary: `${item.estado ?? 'Sin estado'} · ${[item.dosis, item.unidad, item.frecuencia, item.via].filter(Boolean).join(' ') || 'Esquema no registrado'}`, occurredAt: item.fecha_inicio ?? item.fecha_ultima_modificacion ?? '', caseId: item.caso_id, roundId: item.ronda_id })
   })
+  ;(record.treatmentAssessments ?? []).forEach((item) => {
+    add({
+      id: `assessment-${item.id}`,
+      kind: 'Valoración terapéutica',
+      title: item.antimicrobiano,
+      summary: [item.tipo_tratamiento, item.indicacion_clinica, item.estado_al_valorar].filter(Boolean).join(' · '),
+      occurredAt: item.fecha_registro ?? '',
+      caseId: item.caso_id,
+      roundId: item.ronda_id,
+    })
+  })
   record.microbiology.forEach((item) => {
     if (item.caso_id) add({ id: `micro-${item.id}`, kind: 'Microbiología', title: item.tipo_muestra ?? 'Estudio microbiológico', summary: [item.resultado_general, item.microorganismo].filter(Boolean).join(' · ') || 'Sin resultado', occurredAt: item.fecha_resultado ?? item.fecha_toma ?? item.fecha_creacion ?? '', caseId: item.caso_id, roundId: item.ronda_id })
   })
   record.interventions.forEach((item) => {
     const caseId = item.ronda_id ? roundCase.get(item.ronda_id) : null
     if (caseId) add({ id: `intervention-${item.id}`, kind: 'Intervención', title: item.hubo_intervencion ? item.tipo_intervencion ?? 'Intervención PROA' : 'Sin intervención', summary: item.descripcion_recomendacion ?? item.recomendacion ?? item.motivo_no_intervencion ?? 'Sin detalle', occurredAt: item.fecha_creacion ?? '', caseId, roundId: item.ronda_id })
+  })
+  ;(record.interventionDecisions ?? []).forEach((item) => {
+    add({ id: `decision-${item.id}`, kind: 'Decisión', title: `Recomendación ${item.decision.toLowerCase()}`, summary: item.justificacion ?? 'Sin observación adicional', occurredAt: item.fecha_decision, caseId: item.caso_id, roundId: item.ronda_id })
+  })
+  ;(record.interventionImplementations ?? []).forEach((item) => {
+    add({ id: `implementation-${item.id}`, kind: 'Implementación', title: item.estado, summary: item.detalle ?? 'Sin detalle adicional', occurredAt: item.fecha_implementacion, caseId: item.caso_id, roundId: item.ronda_id })
   })
 
   return events.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())

@@ -64,6 +64,12 @@ import {
 import { generateProaNote, getLatestRoundNote } from '../services/noteService'
 import { patientDisplayName } from '../services/patientService'
 import { readableError } from '../services/supabaseErrors'
+import {
+  emptyInterventionFollowUp,
+  getPendingTherapeuticRecommendations,
+  type InterventionFollowUpDraft,
+  type PendingTherapeuticRecommendation,
+} from '../services/therapeuticTraceabilityService'
 import { canWriteOperationalData } from '../services/permissionService'
 import { isReevaluationRule } from '../services/reevaluationService'
 import {
@@ -110,8 +116,8 @@ const suspensionReasons = [
 const microbiologyResults = ['Positivo', 'Negativo', 'Contaminado', 'Sin crecimiento', 'Pendiente'] as const
 const resistanceOptions = ['BLEE', 'AmpC', 'KPC', 'NDM', 'VIM', 'OXA-48', 'MRSA', 'SAMS', 'Otro']
 const sensitivityResults = ['Sensible', 'Intermedio', 'Resistente', 'Susceptible con mayor exposición', 'No disponible'] as const
-const acceptanceOptions = ['Sí', 'No', 'Parcialmente', 'Pendiente'] as const
 const complianceOptions = ['Cumple', 'No cumple', 'No aplica', 'No evaluable'] as const
+const therapeuticActions = ['Continuar', 'Ajustar', 'Suspender', 'Sustituir', 'Iniciar tratamiento'] as const
 
 function toDateTimeLocal(value?: string | null) {
   const date = value ? new Date(value) : new Date()
@@ -155,6 +161,8 @@ function emptyTreatmentDraft(): NewTreatmentDraft {
     via: '',
     fechaInicio: new Date().toISOString().slice(0, 10),
     duracionPrevistaDias: '',
+    indicacionClinica: '',
+    tipoTratamiento: '',
   }
 }
 
@@ -200,6 +208,10 @@ export function RoundEditorPage() {
   const [relatedDiagnoses, setRelatedDiagnoses] = useState<DiagnosisDraft[]>([])
   const [newTreatments, setNewTreatments] = useState<NewTreatmentDraft[]>([])
   const [treatmentActions, setTreatmentActions] = useState<Record<string, TreatmentActionDraft | undefined>>({})
+  const [treatmentAssessment, setTreatmentAssessment] = useState<Record<string, { indication: string; therapyType: 'Empírico' | 'Dirigido' | '' }>>({})
+  const [noAntimicrobials, setNoAntimicrobials] = useState(false)
+  const [pendingRecommendations, setPendingRecommendations] = useState<PendingTherapeuticRecommendation[]>([])
+  const [interventionFollowUps, setInterventionFollowUps] = useState<Record<string, InterventionFollowUpDraft>>({})
   const [microbiology, setMicrobiology] = useState<MicrobiologyDraft>(emptyMicrobiologyDraft())
   const [intervention, setIntervention] = useState<InterventionDraft>(emptyInterventionDraft())
   const [note, setNote] = useState<ProaNote | null>(null)
@@ -231,12 +243,13 @@ export function RoundEditorPage() {
       ])
       const nextServices = await getIpsServices(nextBundle.round.ips_id)
       const nextCasoId = nextBundle.round.caso_id ?? nextBundle.caseProa.id
-      const [roundMicrobiology, caseMicrobiology, roundIntervention, latestNote, roundFindings] = await Promise.all([
+      const [roundMicrobiology, caseMicrobiology, roundIntervention, latestNote, roundFindings, pendingTraceability] = await Promise.all([
         getRoundMicrobiology(nextBundle.round.id),
         getCaseMicrobiology(nextCasoId, nextBundle.round.id),
         getRoundIntervention(nextBundle.round.id),
         getLatestRoundNote(nextBundle.round.id),
         getRoundAuditFindings(nextBundle.round.id),
+        getPendingTherapeuticRecommendations(nextCasoId, nextBundle.round.id),
       ])
       setBundle(nextBundle)
       setCategories(nextCategories)
@@ -245,6 +258,10 @@ export function RoundEditorPage() {
       setPreviousMicrobiology(caseMicrobiology)
       setCurrentMicrobiology(roundMicrobiology)
       setAuditFindings(roundFindings)
+      setPendingRecommendations(pendingTraceability)
+      setInterventionFollowUps(Object.fromEntries(
+        pendingTraceability.map((item) => [item.intervention.id, emptyInterventionFollowUp(item.intervention.id)]),
+      ))
       setMicrobiology(microbiologyDraftFromBundle(roundMicrobiology[0]))
       setIntervention(interventionDraftFromBundle(roundIntervention))
       setNote(latestNote)
@@ -285,6 +302,15 @@ export function RoundEditorPage() {
       setClinicalChanged(diagnosisSource.inherited ? 'No' : 'Sí')
       setNewTreatments([])
       setTreatmentActions({})
+      setTreatmentAssessment(Object.fromEntries(
+        nextBundle.treatments
+          .filter((item) => item.estado === 'Activo')
+          .map((item) => [item.id, {
+            indication: item.indicacion_clinica ?? '',
+            therapyType: item.tipo_tratamiento === 'Empírico' || item.tipo_tratamiento === 'Dirigido' ? item.tipo_tratamiento : '',
+          }]),
+      ))
+      setNoAntimicrobials(Boolean(nextBundle.round.sin_antimicrobianos_valoracion))
     } catch (loadError) {
       setError(readableError(loadError))
     } finally {
@@ -327,6 +353,19 @@ export function RoundEditorPage() {
       const duration = draft.duracionPrevistaDias ? Number(draft.duracionPrevistaDias) : null
       if (duration !== null && (!Number.isInteger(duration) || duration < 0)) {
         return 'La duración prevista no puede ser negativa.'
+      }
+      if (!draft.indicacionClinica.trim()) return 'Registra la indicación clínica del antimicrobiano.'
+      if (!draft.tipoTratamiento) return 'Selecciona si el tratamiento es empírico o dirigido.'
+    }
+
+    if (noAntimicrobials && (activeTreatments.length || newTreatments.length)) {
+      return 'No puedes marcar ausencia de antimicrobianos mientras existan tratamientos activos.'
+    }
+    if (!noAntimicrobials) {
+      for (const treatment of activeTreatments) {
+        const assessment = treatmentAssessment[treatment.id]
+        if (!assessment?.indication.trim()) return 'Registra la indicación clínica de cada tratamiento recibido al valorar.'
+        if (!assessment.therapyType) return 'Clasifica cada tratamiento recibido como empírico o dirigido.'
       }
     }
 
@@ -374,6 +413,22 @@ export function RoundEditorPage() {
       const treatmentIds = new Set((bundle.treatments ?? []).map((treatment) => treatment.id))
       if (intervention.tratamientosRelacionados.some((id) => !treatmentIds.has(id))) {
         return 'La intervención solo puede relacionarse con tratamientos del mismo caso.'
+      }
+      if (!intervention.accionTerapeutica) return 'Selecciona la acción terapéutica recomendada.'
+      if ((intervention.accionTerapeutica === 'Sustituir' || intervention.accionTerapeutica === 'Iniciar tratamiento') && !intervention.antimicrobianoRecomendadoId) {
+        return 'Selecciona el antimicrobiano recomendado sin registrarlo como tratamiento actual.'
+      }
+      if ((intervention.decisionMedico === 'No aceptada' || intervention.decisionMedico === 'Parcialmente aceptada') && !intervention.justificacionDecision.trim()) {
+        return 'Registra el motivo de la decisión del médico tratante.'
+      }
+    }
+
+    for (const followUp of Object.values(interventionFollowUps)) {
+      if ((followUp.decision === 'No aceptada' || followUp.decision === 'Parcialmente aceptada') && !followUp.decisionReason.trim()) {
+        return 'Registra el motivo de la decisión pendiente.'
+      }
+      if (followUp.implementationStatus === 'No implementada' && !followUp.implementationDetail.trim()) {
+        return 'Registra el motivo de no implementación.'
       }
     }
 
@@ -535,6 +590,12 @@ export function RoundEditorPage() {
         const draft = treatmentActions[treatment.id]
         return draft ? [{ treatmentId: treatment.id, draft }] : []
       }),
+      treatmentAssessment: activeTreatments.map((treatment) => ({
+        treatmentId: treatment.id,
+        indication: treatmentAssessment[treatment.id]?.indication ?? '',
+        therapyType: treatmentAssessment[treatment.id]?.therapyType ?? '',
+      })),
+      noAntimicrobialsAtAssessment: noAntimicrobials,
       newTreatments,
       microbiology,
       intervention: intervention.huboIntervencion
@@ -543,6 +604,7 @@ export function RoundEditorPage() {
             diasAhorrados: intervention.diasAhorrados ?? calculateSavedDays(bundle.treatments, intervention.tratamientosRelacionados),
           }
         : null,
+      interventionFollowUps: Object.values(interventionFollowUps).filter((item) => item.decision || item.implementationStatus),
       note: options.note === undefined ? currentNote : options.note,
       confirm: options.confirm,
     })
@@ -819,6 +881,10 @@ export function RoundEditorPage() {
           setNewTreatments={setNewTreatments}
           treatmentActions={treatmentActions}
           setTreatmentActions={setTreatmentActions}
+          treatmentAssessment={treatmentAssessment}
+          setTreatmentAssessment={setTreatmentAssessment}
+          noAntimicrobials={noAntimicrobials}
+          setNoAntimicrobials={setNoAntimicrobials}
           roundDate={roundDateForCalculations}
           readOnly={readOnly}
           sectionError={sectionErrors.treatment}
@@ -863,6 +929,13 @@ export function RoundEditorPage() {
           treatmentActions={treatmentActions}
           treatments={bundle.treatments}
           sectionError={sectionErrors.intervention}
+        />
+        <PendingRecommendationsBlock
+          drafts={interventionFollowUps}
+          onChange={(next) => setInterventionFollowUps({ ...interventionFollowUps, [next.interventionId]: next })}
+          readOnly={readOnly}
+          recommendations={pendingRecommendations}
+          treatments={bundle.treatments}
         />
         </div>
 
@@ -1238,17 +1311,67 @@ function InterventionBlock({
             </select>
           </label>
           <label>
-            Aceptación
-            <select disabled={readOnly} value={draft.aceptacion} onChange={(event) => setDraft({ ...draft, aceptacion: event.target.value as InterventionDraft['aceptacion'] })}>
+            Acción terapéutica recomendada
+            <select disabled={readOnly} value={draft.accionTerapeutica} onChange={(event) => setDraft({ ...draft, accionTerapeutica: event.target.value as InterventionDraft['accionTerapeutica'] })}>
               <option value="">Sin seleccionar</option>
-              {acceptanceOptions.map((option) => <option key={option}>{option}</option>)}
+              {therapeuticActions.map((option) => <option key={option}>{option}</option>)}
             </select>
           </label>
-          {(draft.aceptacion === 'No' || draft.aceptacion === 'Parcialmente') ? (
+          {(draft.accionTerapeutica === 'Sustituir' || draft.accionTerapeutica === 'Iniciar tratamiento') ? (
+            <div className="full-span recommendation-treatment-fields">
+              <p className="muted">Tratamiento recomendado por PROA. No se registra como tratamiento recibido hasta confirmar su implementación.</p>
+              <AntimicrobialAutocomplete
+                readOnly={readOnly}
+                value={draft.antimicrobianoRecomendado}
+                onSelect={(item) => setDraft({ ...draft, antimicrobianoRecomendadoId: item.id, antimicrobianoRecomendado: catalogLabel(item) })}
+              />
+              <div className="form-grid compact-treatment">
+                <label>Dosis<input disabled={readOnly} value={draft.dosisRecomendada} onChange={(event) => setDraft({ ...draft, dosisRecomendada: event.target.value })} /></label>
+                <label>Unidad<input disabled={readOnly} value={draft.unidadRecomendada} onChange={(event) => setDraft({ ...draft, unidadRecomendada: event.target.value })} /></label>
+                <label>Vía<input disabled={readOnly} value={draft.viaRecomendada} onChange={(event) => setDraft({ ...draft, viaRecomendada: event.target.value })} /></label>
+                <label>Frecuencia<input disabled={readOnly} value={draft.frecuenciaRecomendada} onChange={(event) => setDraft({ ...draft, frecuenciaRecomendada: event.target.value })} /></label>
+              </div>
+            </div>
+          ) : null}
+          <label>
+            Decisión del médico tratante
+            <select disabled={readOnly} value={draft.decisionMedico} onChange={(event) => {
+              const decision = event.target.value as InterventionDraft['decisionMedico']
+              const acceptance = decision === 'Aceptada' ? 'Sí' : decision === 'No aceptada' ? 'No' : decision === 'Parcialmente aceptada' ? 'Parcialmente' : 'Pendiente'
+              setDraft({ ...draft, decisionMedico: decision, aceptacion: acceptance })
+            }}>
+              <option value="">Sin seleccionar</option>
+              <option>Aceptada</option>
+              <option value="No aceptada">Rechazada</option>
+              <option>Parcialmente aceptada</option>
+            </select>
+          </label>
+          {(draft.decisionMedico === 'No aceptada' || draft.decisionMedico === 'Parcialmente aceptada') ? (
             <label>
-              Motivo no aceptación
-              <input disabled={readOnly} value={draft.motivoNoAceptacion} onChange={(event) => setDraft({ ...draft, motivoNoAceptacion: event.target.value })} />
+              Motivo de la decisión
+              <input disabled={readOnly} value={draft.justificacionDecision} onChange={(event) => setDraft({ ...draft, justificacionDecision: event.target.value, motivoNoAceptacion: event.target.value })} />
             </label>
+          ) : null}
+          <label>
+            Implementación efectiva
+            <select disabled={readOnly} value={draft.estadoImplementacion} onChange={(event) => setDraft({ ...draft, estadoImplementacion: event.target.value as InterventionDraft['estadoImplementacion'] })}>
+              <option value="">Pendiente</option>
+              <option>Implementación parcial</option>
+              <option>Implementada</option>
+              <option>No implementada</option>
+            </select>
+          </label>
+          {draft.estadoImplementacion ? (
+            <>
+              <label>
+                Fecha de implementación/verificación
+                <input disabled={readOnly} type="date" value={draft.fechaImplementacion} onChange={(event) => setDraft({ ...draft, fechaImplementacion: event.target.value })} />
+              </label>
+              <label>
+                Detalle de implementación
+                <input disabled={readOnly} value={draft.detalleImplementacion} onChange={(event) => setDraft({ ...draft, detalleImplementacion: event.target.value })} />
+              </label>
+            </>
           ) : null}
           <label className="full-span">
             Descripción opcional
@@ -1294,6 +1417,86 @@ function InterventionBlock({
           ) : null}
         </div>
       ) : null}
+    </article>
+  )
+}
+
+function PendingRecommendationsBlock({
+  recommendations,
+  drafts,
+  onChange,
+  treatments,
+  readOnly,
+}: {
+  recommendations: PendingTherapeuticRecommendation[]
+  drafts: Record<string, InterventionFollowUpDraft>
+  onChange: (value: InterventionFollowUpDraft) => void
+  treatments: Treatment[]
+  readOnly: boolean
+}) {
+  if (!recommendations.length) return null
+  return (
+    <article className="panel pending-recommendations-panel">
+      <div className="panel-title">
+        <History size={20} />
+        <div>
+          <h2>Recomendaciones pendientes de confirmación</h2>
+          <p>Resuelve recomendaciones previas sin crear una nueva intervención.</p>
+        </div>
+      </div>
+      <div className="repeat-list">
+        {recommendations.map((item) => {
+          const draft = drafts[item.intervention.id] ?? emptyInterventionFollowUp(item.intervention.id)
+          const related = treatments.filter((treatment) => item.treatmentIds.includes(treatment.id))
+          return (
+            <section className="traceability-followup-card" key={item.intervention.id}>
+              <header>
+                <div>
+                  <strong>{item.intervention.accion_terapeutica ?? item.intervention.recomendacion ?? 'Recomendación PROA'}</strong>
+                  <span>{formatDateTime(item.originRoundAt)} · {related.map(treatmentName).join(', ') || 'Sin tratamiento relacionado'}</span>
+                </div>
+                <span className="status-badge state-followup">Pendiente</span>
+              </header>
+              <p>{item.intervention.descripcion_recomendacion ?? 'Sin descripción adicional.'}</p>
+              <div className="form-grid clinical-grid">
+                {!item.latestDecision ? (
+                  <>
+                    <label>
+                      Decisión del médico tratante
+                      <select disabled={readOnly} value={draft.decision} onChange={(event) => onChange({ ...draft, decision: event.target.value as InterventionFollowUpDraft['decision'] })}>
+                        <option value="">Pendiente</option>
+                        <option>Aceptada</option>
+                        <option value="No aceptada">Rechazada</option>
+                        <option>Parcialmente aceptada</option>
+                      </select>
+                    </label>
+                    {(draft.decision === 'No aceptada' || draft.decision === 'Parcialmente aceptada') ? (
+                      <label>Motivo<input disabled={readOnly} value={draft.decisionReason} onChange={(event) => onChange({ ...draft, decisionReason: event.target.value })} /></label>
+                    ) : null}
+                  </>
+                ) : <p className="traceability-state">Decisión: <strong>{item.latestDecision.decision}</strong> · {formatDateTime(item.latestDecision.fecha_decision)}</p>}
+                {!item.latestImplementation ? (
+                  <>
+                    <label>
+                      Implementación
+                      <select disabled={readOnly} value={draft.implementationStatus} onChange={(event) => onChange({ ...draft, implementationStatus: event.target.value as InterventionFollowUpDraft['implementationStatus'] })}>
+                        <option value="">Pendiente</option>
+                        <option>Implementación parcial</option>
+                        <option>Implementada</option>
+                        <option>No implementada</option>
+                      </select>
+                    </label>
+                    {draft.implementationStatus ? <>
+                      <label>Fecha de implementación/verificación<input disabled={readOnly} type="date" value={draft.implementationDate} onChange={(event) => onChange({ ...draft, implementationDate: event.target.value })} /></label>
+                      <label>Detalle<input disabled={readOnly} value={draft.implementationDetail} onChange={(event) => onChange({ ...draft, implementationDetail: event.target.value })} /></label>
+                    </> : null}
+                  </>
+                ) : <p className="traceability-state">Implementación: <strong>{item.latestImplementation.estado}</strong> · {formatDateTime(item.latestImplementation.fecha_implementacion)}</p>}
+              </div>
+            </section>
+          )
+        })}
+      </div>
     </article>
   )
 }
@@ -1787,6 +1990,10 @@ export function AntimicrobialBlock({
   setNewTreatments,
   treatmentActions,
   setTreatmentActions,
+  treatmentAssessment,
+  setTreatmentAssessment,
+  noAntimicrobials,
+  setNoAntimicrobials,
   roundDate,
   readOnly,
   sectionError,
@@ -1796,6 +2003,10 @@ export function AntimicrobialBlock({
   setNewTreatments: (value: NewTreatmentDraft[]) => void
   treatmentActions: Record<string, TreatmentActionDraft | undefined>
   setTreatmentActions: (value: Record<string, TreatmentActionDraft | undefined>) => void
+  treatmentAssessment: Record<string, { indication: string; therapyType: 'Empírico' | 'Dirigido' | '' }>
+  setTreatmentAssessment: (value: Record<string, { indication: string; therapyType: 'Empírico' | 'Dirigido' | '' }>) => void
+  noAntimicrobials: boolean
+  setNoAntimicrobials: (value: boolean) => void
   roundDate?: string | null
   readOnly: boolean
   sectionError?: string
@@ -1806,7 +2017,7 @@ export function AntimicrobialBlock({
         <Pill size={20} />
         <div>
           <h2>Antimicrobianos</h2>
-          <p>Solo tratamientos utilizados. Cada antimicrobiano se guarda como fila independiente.</p>
+          <p>Tratamientos recibidos al iniciar esta valoración. No incluye recomendaciones nuevas de PROA.</p>
         </div>
       </div>
 
@@ -1816,6 +2027,8 @@ export function AntimicrobialBlock({
             <TreatmentCard
               key={treatment.id}
               action={treatmentActions[treatment.id]}
+              assessment={treatmentAssessment[treatment.id] ?? { indication: '', therapyType: '' }}
+              onAssessmentChange={(assessment) => setTreatmentAssessment({ ...treatmentAssessment, [treatment.id]: assessment })}
               onActionChange={(action) => setTreatmentActions({ ...treatmentActions, [treatment.id]: action })}
               readOnly={readOnly}
               roundDate={roundDate}
@@ -1827,13 +2040,23 @@ export function AntimicrobialBlock({
         <p className="muted">No hay tratamientos activos visibles para el caso.</p>
       )}
 
+      <label className="checkbox-field treatment-none-option">
+        <input
+          checked={noAntimicrobials}
+          disabled={readOnly || activeTreatments.length > 0 || newTreatments.length > 0}
+          onChange={(event) => setNoAntimicrobials(event.target.checked)}
+          type="checkbox"
+        />
+        El paciente no recibe antimicrobianos al momento de esta valoración
+      </label>
+
       <div className="subsection">
         <SectionError message={sectionError} />
         <div className="subsection-heading">
           <h3>Nuevos tratamientos</h3>
           <button
             className="secondary-button"
-            disabled={readOnly || newTreatments.length >= 3}
+            disabled={readOnly || noAntimicrobials || newTreatments.length >= 3}
             onClick={() => setNewTreatments([...newTreatments, emptyTreatmentDraft()])}
             type="button"
           >
@@ -1866,12 +2089,16 @@ export function AntimicrobialBlock({
 function TreatmentCard({
   treatment,
   action,
+  assessment,
+  onAssessmentChange,
   onActionChange,
   roundDate,
   readOnly,
 }: {
   treatment: Treatment
   action?: TreatmentActionDraft
+  assessment: { indication: string; therapyType: 'Empírico' | 'Dirigido' | '' }
+  onAssessmentChange: (value: { indication: string; therapyType: 'Empírico' | 'Dirigido' | '' }) => void
   onActionChange: (value: TreatmentActionDraft | undefined) => void
   roundDate?: string | null
   readOnly: boolean
@@ -1886,6 +2113,20 @@ function TreatmentCard({
           {[treatment.dosis, treatment.unidad, treatment.via, treatment.frecuencia].filter(Boolean).join(' · ') || 'Sin pauta completa'}
         </p>
         <span>Inicio: {formatDate(treatment.fecha_inicio)} {day ? `· Día ${day}` : ''}</span>
+      </div>
+      <div className="form-grid compact-treatment treatment-assessment-fields">
+        <label className="full-span">
+          Indicación clínica
+          <input disabled={readOnly} value={assessment.indication} onChange={(event) => onAssessmentChange({ ...assessment, indication: event.target.value })} />
+        </label>
+        <label>
+          Tipo al valorar
+          <select disabled={readOnly} value={assessment.therapyType} onChange={(event) => onAssessmentChange({ ...assessment, therapyType: event.target.value as typeof assessment.therapyType })}>
+            <option value="">Sin seleccionar</option>
+            <option>Empírico</option>
+            <option>Dirigido</option>
+          </select>
+        </label>
       </div>
       <div className="segmented-actions">
         <button className={action?.kind === 'Continuar' ? 'selected' : ''} disabled={readOnly} onClick={() => onActionChange({ kind: 'Continuar' })} type="button">Continuar</button>
@@ -1993,6 +2234,15 @@ function NewTreatmentRow({
         <label>Vía<input disabled={readOnly} value={draft.via} onChange={(event) => onChange({ ...draft, via: event.target.value })} /></label>
         <label>Fecha inicio<input disabled={readOnly} type="date" value={draft.fechaInicio} onChange={(event) => onChange({ ...draft, fechaInicio: event.target.value })} /></label>
         <label>Duración prevista (días)<input disabled={readOnly} min="0" type="number" value={draft.duracionPrevistaDias ?? ''} onChange={(event) => onChange({ ...draft, duracionPrevistaDias: event.target.value })} /></label>
+        <label className="full-span">Indicación clínica<input disabled={readOnly} value={draft.indicacionClinica} onChange={(event) => onChange({ ...draft, indicacionClinica: event.target.value })} /></label>
+        <label>
+          Tipo al valorar
+          <select disabled={readOnly} value={draft.tipoTratamiento} onChange={(event) => onChange({ ...draft, tipoTratamiento: event.target.value as NewTreatmentDraft['tipoTratamiento'] })}>
+            <option value="">Sin seleccionar</option>
+            <option>Empírico</option>
+            <option>Dirigido</option>
+          </select>
+        </label>
       </div>
       <div className="treatment-derived">
         {day ? <span>Día {day} de tratamiento</span> : null}

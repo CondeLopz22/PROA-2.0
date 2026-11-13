@@ -890,6 +890,33 @@ textarea:focus {
   font-size: 0.86rem;
 }
 
+.treatment-assessment-fields {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.recommendation-treatment-fields,
+.traceability-followup-card {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.traceability-followup-card > header,
+.traceability-followup-card > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.traceability-followup-card > header span,
+.traceability-state {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
 .segmented-actions {
   display: grid;
   gap: 6px;

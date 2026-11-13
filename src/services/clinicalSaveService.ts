@@ -3,6 +3,7 @@ import type { DiagnosisDraft } from './clinicalRoundService'
 import type { InterventionDraft } from './interventionService'
 import type { MicrobiologyDraft } from './microbiologyService'
 import type { NewTreatmentDraft, TreatmentActionDraft } from './treatmentService'
+import type { InterventionFollowUpDraft } from './therapeuticTraceabilityService'
 import type { DiagnosisRound, ProaNote, RoundProa, UUID } from '../types/domain'
 
 type RoundPayload = {
@@ -24,11 +25,14 @@ export type ClinicalSaveInput = {
   round: RoundPayload
   diagnoses: DiagnosisDraft[]
   treatmentActions: Array<{ treatmentId: UUID; draft: TreatmentActionDraft }>
+  treatmentAssessment: Array<{ treatmentId: UUID; indication: string; therapyType: 'Empírico' | 'Dirigido' | '' }>
+  noAntimicrobialsAtAssessment: boolean
   newTreatments: NewTreatmentDraft[]
   microbiology: MicrobiologyDraft
   intervention?: InterventionDraft | null
   note?: { generatedText: string; finalText: string } | null
   confirm?: boolean
+  interventionFollowUps?: InterventionFollowUpDraft[]
 }
 
 export type ClinicalSaveResult = {
@@ -88,6 +92,12 @@ export function buildClinicalSavePayload(input: ClinicalSaveInput) {
         proa_category_id: item.categoria_proa_id,
       })),
     treatment_actions: input.treatmentActions.map(treatmentActionPayload),
+    treatment_assessment: input.treatmentAssessment.map((item) => ({
+      treatment_id: item.treatmentId,
+      indication: item.indication,
+      therapy_type: item.therapyType || null,
+    })),
+    no_antimicrobials_at_assessment: input.noAntimicrobialsAtAssessment,
     new_treatments: input.newTreatments.map((item) => ({
       antimicrobial_id: item.antimicrobialId,
       antimicrobial_name: item.antimicrobialName,
@@ -97,6 +107,8 @@ export function buildClinicalSavePayload(input: ClinicalSaveInput) {
       route: item.via,
       start_date: item.fechaInicio,
       planned_duration_days: item.duracionPrevistaDias,
+      indication: item.indicacionClinica,
+      therapy_type: item.tipoTratamiento || null,
     })),
     microbiology: {
       status: input.microbiology.status,
@@ -132,7 +144,20 @@ export function buildClinicalSavePayload(input: ClinicalSaveInput) {
       origin: input.intervention.origenIntervencion || null,
       recommendation: input.intervention.recomendacion || null,
       recommendation_description: input.intervention.descripcionRecomendacion || null,
-      acceptance: input.intervention.aceptacion || null,
+      therapeutic_action: input.intervention.accionTerapeutica || null,
+      recommended_antimicrobial_id: input.intervention.antimicrobianoRecomendadoId || null,
+      recommended_antimicrobial: input.intervention.antimicrobianoRecomendado || null,
+      recommended_dose: input.intervention.dosisRecomendada || null,
+      recommended_unit: input.intervention.unidadRecomendada || null,
+      recommended_route: input.intervention.viaRecomendada || null,
+      recommended_frequency: input.intervention.frecuenciaRecomendada || null,
+      decision: input.intervention.decisionMedico || null,
+      decision_reason: input.intervention.justificacionDecision || null,
+      implementation_status: input.intervention.estadoImplementacion || null,
+      implementation_detail: input.intervention.detalleImplementacion || null,
+      implementation_date: input.intervention.fechaImplementacion || null,
+      implemented_treatment_id: input.intervention.tratamientoImplementadoId || null,
+      acceptance: input.intervention.aceptacion || 'Pendiente',
       non_acceptance_reason: input.intervention.motivoNoAceptacion || null,
       guideline_compliance: input.intervention.cumplimientoGuia || null,
       non_compliance_reason: input.intervention.motivoNoCumplimiento || null,
@@ -142,6 +167,16 @@ export function buildClinicalSavePayload(input: ClinicalSaveInput) {
       follow_up_reason: input.intervention.motivoSeguimiento || null,
     }
   }
+
+  payload.intervention_followups = (input.interventionFollowUps ?? []).map((item) => ({
+    intervention_id: item.interventionId,
+    decision: item.decision || null,
+    decision_reason: item.decisionReason || null,
+    implementation_status: item.implementationStatus || null,
+    implementation_detail: item.implementationDetail || null,
+    implementation_date: item.implementationDate || null,
+    implemented_treatment_id: item.implementedTreatmentId || null,
+  }))
 
   if (input.note) {
     payload.note = {
@@ -162,6 +197,12 @@ const transactionalErrors: Array<[string, string]> = [
   ['EST01_MICROBIOLOGY:', 'No se pudo guardar el bloque Microbiología.'],
   ['EST01_INTERVENTION:', 'No se pudo guardar el bloque Intervención PROA.'],
   ['EST01_NOTE:', 'No se pudo guardar la Nota de Evolución PROA.'],
+  ['EST03B_ACCESS:', 'No tienes permisos para guardar la trazabilidad terapéutica.'],
+  ['EST03B_CONTEXT:', 'No se pudo validar el contexto de la trazabilidad terapéutica.'],
+  ['EST03B_TREATMENT:', 'No se pudo guardar el tratamiento al momento de la valoración.'],
+  ['EST03B_INTERVENTION:', 'No se pudo guardar la recomendación terapéutica.'],
+  ['EST03B_DECISION:', 'No se pudo guardar la decisión del médico tratante.'],
+  ['EST03B_IMPLEMENTATION:', 'No se pudo guardar la implementación terapéutica.'],
 ]
 
 export function clinicalSaveError(error: unknown) {
@@ -176,7 +217,7 @@ export function clinicalSaveError(error: unknown) {
 }
 
 export async function saveClinicalRoundTransaction(input: ClinicalSaveInput): Promise<ClinicalSaveResult> {
-  const { data, error } = await supabase.rpc('guardar_ronda_clinica', {
+  const { data, error } = await supabase.rpc('guardar_ronda_clinica_trazable', {
     p_payload: buildClinicalSavePayload(input),
   })
   if (error) throw error

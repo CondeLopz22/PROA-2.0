@@ -15,6 +15,10 @@ describe('RoundEditorPage contextual clinical errors', () => {
         setNewTreatments={vi.fn()}
         treatmentActions={{}}
         setTreatmentActions={vi.fn()}
+        treatmentAssessment={{}}
+        setTreatmentAssessment={vi.fn()}
+        noAntimicrobials={false}
+        setNoAntimicrobials={vi.fn()}
         readOnly={false}
         sectionError={duplicateMessage}
       />,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generateProaNote } from './noteService'
+import { emptyInterventionDraft } from './interventionService'
 
 describe('generateProaNote', () => {
   it('produce texto clínico sin null ni undefined con bloques parciales', () => {
@@ -46,23 +47,8 @@ describe('generateProaNote', () => {
       ],
       microbiology: [],
       intervention: {
+        ...emptyInterventionDraft(),
         huboIntervencion: '',
-        tipoIntervencionId: '',
-        tipoIntervencion: '',
-        tratamientosRelacionados: [],
-        motivoNoIntervencion: '',
-        descripcionMotivoNoIntervencion: '',
-        origenIntervencion: '',
-        recomendacion: '',
-        descripcionRecomendacion: '',
-        aceptacion: '',
-        motivoNoAceptacion: '',
-        cumplimientoGuia: '',
-        motivoNoCumplimiento: '',
-        diasAhorrados: null,
-        requiereSeguimiento: false,
-        fechaSeguimiento: '',
-        motivoSeguimiento: '',
       },
     })
 
